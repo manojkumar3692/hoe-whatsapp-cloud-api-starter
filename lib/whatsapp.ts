@@ -85,3 +85,46 @@ export async function sendTemplateMessage(input: {
 
   return json;
 }
+
+export async function sendTextMessage(input: {
+  to: string;
+  message: string;
+}) {
+  const version = process.env.META_API_VERSION || "v23.0";
+  const phoneNumberId = process.env.META_PHONE_NUMBER_ID;
+  const token = process.env.META_WHATSAPP_TOKEN;
+
+  if (!phoneNumberId || !token) {
+    throw new Error("Missing Meta WhatsApp env vars");
+  }
+
+  const payload = {
+    messaging_product: "whatsapp",
+    to: input.to,
+    type: "text",
+    text: {
+      preview_url: false,
+      body: input.message,
+    },
+  };
+
+  const res = await fetch(
+    `https://graph.facebook.com/${version}/${phoneNumberId}/messages`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  const json = await res.json();
+
+  if (!res.ok) {
+    throw new Error(JSON.stringify(json));
+  }
+
+  return json;
+}
