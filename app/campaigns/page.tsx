@@ -19,6 +19,7 @@ export default async function Campaigns() {
         <a href="/customers">Customers</a>
         <a href="/messages">Messages</a>
         <a href="/inbox">Inbox</a>
+        <a href="/campaign-history">Campaign History</a>
       </div>
 
       <h1>Send Campaign</h1>
@@ -28,7 +29,12 @@ export default async function Campaigns() {
           Only use approved Meta template names. Start with 3–5 customers first.
         </p>
 
-        <form action="/api/campaigns/send" method="post" className="grid">
+        <form
+  action="/api/campaigns/preview"
+  method="post"
+  encType="multipart/form-data"
+  className="grid"
+>
           <input
             name="admin_password"
             placeholder="Admin password"
@@ -37,10 +43,24 @@ export default async function Campaigns() {
           />
 
           <input
+            name="audience_file"
+            type="file"
+            accept=".csv"
+            placeholder="Upload audience CSV"
+          />
+
+
+          <input
             name="campaign_name"
             defaultValue="Desert Tonka Launch"
             placeholder="Campaign name"
             required
+          />
+
+          <input
+            name="coupon_code"
+            defaultValue="EON20"
+            placeholder="Coupon code e.g. EON20"
           />
 
           <input

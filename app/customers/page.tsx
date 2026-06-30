@@ -14,6 +14,8 @@ export default async function Customers() {
         <a href="/">Home</a>{" | "}
         <a href="/campaigns">Campaigns</a>{" | "}
         <a href="/messages">Messages</a>
+        <a href="/inbox">Inbox</a>
+        <a href="/campaign-history">Campaign History</a>
       </div>
 
       <h1>Customers</h1>

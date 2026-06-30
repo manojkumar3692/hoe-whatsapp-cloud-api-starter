@@ -46,27 +46,34 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const uniquePayload = Array.from(
+      new Map(payload.map((customer: any) => [customer.phone, customer])).values()
+    );
+
+    const duplicateCount = payload.length - uniquePayload.length;
+
     const supabase = supabaseAdmin();
 
     const { error } = await supabase
       .from("customers")
-      .upsert(payload, { onConflict: "phone" });
+      .upsert(uniquePayload, { onConflict: "phone" });
 
     if (error) {
       throw error;
     }
 
     return NextResponse.redirect(
-      new URL(`/customers?imported=${payload.length}`, req.url),
+      new URL(
+        `/customers?imported=${uniquePayload.length}&duplicates=${duplicateCount}`,
+        req.url
+      ),
       303
     );
   } catch (e: any) {
     console.error("IMPORT ERROR:", e);
 
     return NextResponse.json(
-      {
-        error: e.message || "Import failed",
-      },
+      { error: e.message || "Import failed" },
       { status: 500 }
     );
   }

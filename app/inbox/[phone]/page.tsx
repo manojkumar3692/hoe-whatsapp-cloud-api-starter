@@ -56,7 +56,9 @@ export default async function ChatPage({
       <nav style={{ marginBottom: 24 }}>
         <Link href="/inbox">← Inbox</Link>{" | "}
         <Link href="/customers">Customers</Link>{" | "}
-        <Link href="/campaigns">Campaigns</Link>
+        <Link href="/campaigns">Campaigns</Link>{" | "}
+        <Link href="/inbox">Inbox</Link>{" | "}
+        <Link href="/campaign-history">Campaign History</Link>
       </nav>
 
       <h1>{customer?.name || "Unknown Customer"}</h1>

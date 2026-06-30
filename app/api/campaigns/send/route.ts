@@ -2,15 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 import { sendTemplateMessage } from "../../../../lib/whatsapp";
 
-function getBodyParams(form: FormData, customerName: string) {
-  const params = [
-    String(form.get("body_param_1") || customerName || "there"),
-    String(form.get("body_param_2") || ""),
-    String(form.get("body_param_3") || ""),
-    String(form.get("body_param_4") || ""),
-  ];
-
-  return params.filter((p) => p.trim().length > 0);
+function getBodyParams(customerName: string) {
+  return [customerName || "there"];
 }
 
 export async function POST(req: NextRequest) {
@@ -21,104 +14,200 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const templateName = String(
-      form.get("template_name") || process.env.META_DEFAULT_TEMPLATE || ""
-    );
+    const campaignId = String(form.get("campaign_id") || "");
 
-    const languageCode = String(form.get("language_code") || "en");
-    const product = String(form.get("product") || "");
-    const limit = Math.min(Number(form.get("limit") || 10), 500);
-
-    const headerImageUrl = String(form.get("header_image_url") || "").trim();
-    const buttonUrlParam = String(form.get("button_url_param") || "").trim();
-
-    if (!templateName) {
+    if (!campaignId) {
       return NextResponse.json(
-        { error: "template_name required" },
+        { error: "campaign_id required. Please preview campaign first." },
         { status: 400 }
       );
     }
 
     const supabase = supabaseAdmin();
 
-    let q = supabase
-      .from("customers")
+    const { data: campaign, error: campaignError } = await supabase
+      .from("campaigns")
       .select("*")
-      .eq("consent", true)
-      .order("created_at", { ascending: true })
-      .limit(limit);
+      .eq("id", campaignId)
+      .maybeSingle();
 
-    if (product) {
-      q = q.eq("product", product);
+    if (campaignError || !campaign) {
+      return NextResponse.json(
+        { error: campaignError?.message || "Campaign not found" },
+        { status: 404 }
+      );
     }
 
-    const { data: customers, error } = await q;
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (campaign.status === "completed") {
+      return NextResponse.json(
+        { error: "This campaign is already completed. Create a new preview to resend." },
+        { status: 400 }
+      );
     }
+
+    const { data: recipients, error: recipientsError } = await supabase
+      .from("campaign_recipients")
+      .select("*")
+      .eq("campaign_id", campaignId)
+      .eq("status", "ready")
+      .order("created_at", { ascending: true });
+
+    if (recipientsError) {
+      return NextResponse.json({ error: recipientsError.message }, { status: 500 });
+    }
+
+    if (!recipients || recipients.length === 0) {
+      return NextResponse.json(
+        { error: "No ready recipients found for this campaign." },
+        { status: 400 }
+      );
+    }
+
+    await supabase
+      .from("campaigns")
+      .update({
+        status: "sending",
+        total_recipients: recipients.length,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", campaignId);
 
     const results = [];
 
-    for (const c of customers || []) {
-      const bodyParams = getBodyParams(form, c.name);
+    for (const r of recipients) {
+      const customerPayload = {
+        name: r.name || "Unknown",
+        phone: r.phone,
+        product: r.product || "",
+        city: r.city || "",
+        source: "campaign_csv",
+        consent: true,
+        last_campaign_name: campaign.name,
+        last_campaign_at: new Date().toISOString(),
+      };
+
+      const { data: customer, error: customerError } = await supabase
+        .from("customers")
+        .upsert(customerPayload, { onConflict: "phone" })
+        .select("*")
+        .single();
+
+      if (customerError) {
+        await supabase
+          .from("campaign_recipients")
+          .update({
+            status: "failed",
+            reason: customerError.message,
+          })
+          .eq("id", r.id);
+
+        results.push({
+          phone: r.phone,
+          ok: false,
+          error: customerError.message,
+        });
+
+        continue;
+      }
+
+      const bodyParams = getBodyParams(customer?.name || r.name);
 
       try {
         const wa = await sendTemplateMessage({
-          to: c.phone,
-          templateName,
-          languageCode,
+          to: r.phone,
+          templateName: campaign.template_name,
+          languageCode: "en",
           bodyParams,
-          headerImageUrl,
-          buttonUrlParam,
+          headerImageUrl: campaign.header_image_url || "",
+          buttonUrlParam: "",
         });
 
         const wamid = wa.messages?.[0]?.id;
+        const status = wa.messages?.[0]?.message_status || "accepted";
 
         await supabase.from("message_logs").insert({
-          customer_id: c.id,
-          phone: c.phone,
+          campaign_id: campaignId,
+          customer_id: customer?.id || null,
+          phone: r.phone,
           direction: "outbound",
-          template_name: templateName,
+          template_name: campaign.template_name,
           body: bodyParams.join(", "),
           meta_message_id: wamid,
-          status: wa.messages?.[0]?.message_status || "accepted",
+          status,
           raw_response: wa,
         });
 
         await supabase
           .from("customers")
-          .update({ last_message_at: new Date().toISOString() })
-          .eq("id", c.id);
+          .update({
+            last_message_at: new Date().toISOString(),
+            last_campaign_name: campaign.name,
+            last_campaign_at: new Date().toISOString(),
+          })
+          .eq("id", customer.id);
 
-        results.push({ phone: c.phone, ok: true, id: wamid });
+        await supabase
+          .from("campaign_recipients")
+          .update({
+            customer_id: customer.id,
+            status: "sent",
+            reason: null,
+          })
+          .eq("id", r.id);
+
+        results.push({ phone: r.phone, ok: true, id: wamid });
 
         await new Promise((resolve) => setTimeout(resolve, 500));
       } catch (e: any) {
         await supabase.from("message_logs").insert({
-          customer_id: c.id,
-          phone: c.phone,
+          campaign_id: campaignId,
+          customer_id: customer?.id || null,
+          phone: r.phone,
           direction: "outbound",
-          template_name: templateName,
+          template_name: campaign.template_name,
           body: bodyParams.join(", "),
           status: "failed",
           error: e.message,
           raw_response: { error: e.message },
         });
 
+        await supabase
+          .from("campaign_recipients")
+          .update({
+            customer_id: customer?.id || null,
+            status: "failed",
+            reason: e.message,
+          })
+          .eq("id", r.id);
+
         results.push({
-          phone: c.phone,
+          phone: r.phone,
           ok: false,
           error: e.message,
         });
       }
     }
 
+    const sentCount = results.filter((r) => r.ok).length;
+    const failedCount = results.filter((r) => !r.ok).length;
+
+    await supabase
+      .from("campaigns")
+      .update({
+        sent_count: sentCount,
+        failed_count: failedCount,
+        status: "completed",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", campaignId);
+
     return NextResponse.json({
-      templateName,
+      campaignId,
+      campaignName: campaign.name,
+      templateName: campaign.template_name,
       total: results.length,
-      sent: results.filter((r) => r.ok).length,
-      failed: results.filter((r) => !r.ok).length,
+      sent: sentCount,
+      failed: failedCount,
       results,
     });
   } catch (e: any) {
