@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 import { sendTemplateMessage } from "../../../../lib/whatsapp";
 
+function getBodyParams(form: FormData, customerName: string) {
+  const params = [
+    String(form.get("body_param_1") || customerName || "there"),
+    String(form.get("body_param_2") || ""),
+    String(form.get("body_param_3") || ""),
+    String(form.get("body_param_4") || ""),
+  ];
+
+  return params.filter((p) => p.trim().length > 0);
+}
+
 export async function POST(req: NextRequest) {
   try {
     const form = await req.formData();
@@ -18,6 +29,9 @@ export async function POST(req: NextRequest) {
     const product = String(form.get("product") || "");
     const limit = Math.min(Number(form.get("limit") || 10), 500);
 
+    const headerImageUrl = String(form.get("header_image_url") || "").trim();
+    const buttonUrlParam = String(form.get("button_url_param") || "").trim();
+
     if (!templateName) {
       return NextResponse.json(
         { error: "template_name required" },
@@ -31,6 +45,7 @@ export async function POST(req: NextRequest) {
       .from("customers")
       .select("*")
       .eq("consent", true)
+      .order("created_at", { ascending: true })
       .limit(limit);
 
     if (product) {
@@ -46,9 +61,7 @@ export async function POST(req: NextRequest) {
     const results = [];
 
     for (const c of customers || []) {
-      const bodyParams = [
-        String(form.get("body_param_1") || c.name || "there"),
-      ];
+      const bodyParams = getBodyParams(form, c.name);
 
       try {
         const wa = await sendTemplateMessage({
@@ -56,6 +69,8 @@ export async function POST(req: NextRequest) {
           templateName,
           languageCode,
           bodyParams,
+          headerImageUrl,
+          buttonUrlParam,
         });
 
         const wamid = wa.messages?.[0]?.id;
@@ -67,7 +82,7 @@ export async function POST(req: NextRequest) {
           template_name: templateName,
           body: bodyParams.join(", "),
           meta_message_id: wamid,
-          status: wa.messages?.[0]?.message_status || "sent",
+          status: wa.messages?.[0]?.message_status || "accepted",
           raw_response: wa,
         });
 
@@ -77,6 +92,8 @@ export async function POST(req: NextRequest) {
           .eq("id", c.id);
 
         results.push({ phone: c.phone, ok: true, id: wamid });
+
+        await new Promise((resolve) => setTimeout(resolve, 500));
       } catch (e: any) {
         await supabase.from("message_logs").insert({
           customer_id: c.id,
@@ -98,6 +115,8 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({
+      templateName,
+      total: results.length,
       sent: results.filter((r) => r.ok).length,
       failed: results.filter((r) => !r.ok).length,
       results,

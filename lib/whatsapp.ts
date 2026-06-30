@@ -6,6 +6,7 @@ export async function sendTemplateMessage(input: {
   languageCode: string;
   bodyParams?: string[];
   buttonUrlParam?: string;
+  headerImageUrl?: string;
 }) {
   const version = process.env.META_API_VERSION || "v23.0";
   const phoneNumberId = process.env.META_PHONE_NUMBER_ID;
@@ -16,6 +17,20 @@ export async function sendTemplateMessage(input: {
   }
 
   const components: any[] = [];
+
+  if (input.headerImageUrl) {
+    components.push({
+      type: "header",
+      parameters: [
+        {
+          type: "image",
+          image: {
+            link: input.headerImageUrl,
+          },
+        },
+      ],
+    });
+  }
 
   if (input.bodyParams?.length) {
     components.push({
