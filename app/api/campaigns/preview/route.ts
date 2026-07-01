@@ -3,6 +3,33 @@ import { parse } from "csv-parse/sync";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 import { normalizePhone } from "../../../../lib/phone";
 
+function getHealth(customer: any) {
+  const failCount = customer?.marketing_fail_count || 0;
+  const cooldownUntil = customer?.marketing_cooldown_until;
+
+  const inCooldown =
+    cooldownUntil && new Date(cooldownUntil).getTime() > Date.now();
+
+  if (inCooldown) {
+    return {
+      status: "cooldown",
+      reason: `In cooldown until ${new Date(cooldownUntil).toLocaleDateString()}`,
+    };
+  }
+
+  if (failCount >= 2) {
+    return {
+      status: "warning",
+      reason: `Warning: ${failCount} previous marketing failures`,
+    };
+  }
+
+  return {
+    status: "ready",
+    reason: null,
+  };
+}
+
 export async function POST(req: NextRequest) {
   try {
     const form = await req.formData();
@@ -13,13 +40,10 @@ export async function POST(req: NextRequest) {
 
     const campaignName = String(form.get("campaign_name") || "Untitled Campaign");
     const templateName = String(form.get("template_name") || "");
-    const languageCode = String(form.get("language_code") || "en");
     const couponCode = String(form.get("coupon_code") || "").trim();
     const headerImageUrl = String(form.get("header_image_url") || "").trim();
-    const buttonUrlParam = String(form.get("button_url_param") || "").trim();
     const product = String(form.get("product") || "");
     const limit = Math.min(Number(form.get("limit") || 500), 500);
-
     const file = form.get("audience_file") as File | null;
 
     if (!templateName) {
@@ -72,9 +96,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single();
 
-    if (campaignError) {
-      throw campaignError;
-    }
+    if (campaignError) throw campaignError;
 
     const phones = unique.map((x: any) => x.phone);
 
@@ -100,6 +122,15 @@ export async function POST(req: NextRequest) {
     const recipients = unique.map((x: any) => {
       const existing = existingMap.get(x.phone);
       const alreadySent = alreadySentSet.has(x.phone);
+      const health = getHealth(existing);
+
+      let status = health.status;
+      let reason = health.reason;
+
+      if (alreadySent) {
+        status = "already_sent";
+        reason = "Already received this template before";
+      }
 
       return {
         campaign_id: campaign.id,
@@ -108,8 +139,8 @@ export async function POST(req: NextRequest) {
         phone: x.phone,
         product: x.product,
         city: x.city,
-        status: alreadySent ? "already_sent" : "ready",
-        reason: alreadySent ? "Already received this template before" : null,
+        status,
+        reason,
       };
     });
 
@@ -117,9 +148,7 @@ export async function POST(req: NextRequest) {
       .from("campaign_recipients")
       .insert(recipients);
 
-    if (recipientError) {
-      throw recipientError;
-    }
+    if (recipientError) throw recipientError;
 
     return NextResponse.redirect(
       new URL(`/campaigns/preview/${campaign.id}`, req.url),

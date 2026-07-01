@@ -15,10 +15,12 @@ export async function POST(req: NextRequest) {
     }
 
     const campaignId = String(form.get("campaign_id") || "");
+    const sendEveryoneAnyway =
+      String(form.get("send_everyone_anyway") || "") === "yes";
 
     if (!campaignId) {
       return NextResponse.json(
-        { error: "campaign_id required. Please preview campaign first." },
+        { error: "campaign_id required. Preview campaign first." },
         { status: 400 }
       );
     }
@@ -40,25 +42,34 @@ export async function POST(req: NextRequest) {
 
     if (campaign.status === "completed") {
       return NextResponse.json(
-        { error: "This campaign is already completed. Create a new preview to resend." },
+        { error: "This campaign is already completed." },
         { status: 400 }
       );
+    }
+
+    let allowedStatuses = ["ready", "warning"];
+
+    if (sendEveryoneAnyway) {
+      allowedStatuses = ["ready", "warning", "cooldown"];
     }
 
     const { data: recipients, error: recipientsError } = await supabase
       .from("campaign_recipients")
       .select("*")
       .eq("campaign_id", campaignId)
-      .eq("status", "ready")
+      .in("status", allowedStatuses)
       .order("created_at", { ascending: true });
 
     if (recipientsError) {
-      return NextResponse.json({ error: recipientsError.message }, { status: 500 });
+      return NextResponse.json(
+        { error: recipientsError.message },
+        { status: 500 }
+      );
     }
 
     if (!recipients || recipients.length === 0) {
       return NextResponse.json(
-        { error: "No ready recipients found for this campaign." },
+        { error: "No eligible recipients found." },
         { status: 400 }
       );
     }
@@ -205,6 +216,7 @@ export async function POST(req: NextRequest) {
       campaignId,
       campaignName: campaign.name,
       templateName: campaign.template_name,
+      overrideUsed: sendEveryoneAnyway,
       total: results.length,
       sent: sentCount,
       failed: failedCount,
