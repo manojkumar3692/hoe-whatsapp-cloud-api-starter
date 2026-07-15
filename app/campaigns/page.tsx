@@ -65,7 +65,7 @@ export default async function Campaigns() {
 
           <input
             name="template_name"
-            defaultValue="desert_tonka_launch"
+            defaultValue="arctic_waves_promotion"
             placeholder="Approved template name"
             required
           />
@@ -115,7 +115,7 @@ export default async function Campaigns() {
             max="500"
           />
 
-          <button type="submit">Send Campaign</button>
+         <button type="submit">Preview Audience</button>
         </form>
       </div>
     </main>

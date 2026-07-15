@@ -3,24 +3,6 @@ import { supabaseAdmin } from "../../../lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 
-function healthBadge(customer: any) {
-  const failCount = customer?.marketing_fail_count || 0;
-  const cooldown = customer?.marketing_cooldown_until;
-
-  const inCooldown =
-    cooldown && new Date(cooldown).getTime() > Date.now();
-
-  if (inCooldown) {
-    return badge("🔴 Cooldown", "#fee2e2", "#991b1b");
-  }
-
-  if (failCount >= 2) {
-    return badge("🟡 Warning", "#fef3c7", "#92400e");
-  }
-
-  return badge("🟢 Healthy", "#dcfce7", "#166534");
-}
-
 function badge(text: string, bg: string, color: string) {
   return (
     <span
@@ -38,7 +20,7 @@ function badge(text: string, bg: string, color: string) {
   );
 }
 
-function messageBadge(status: string) {
+function statusBadge(status?: string) {
   const colors: any = {
     accepted: ["#e5e7eb", "#374151"],
     sent: ["#dbeafe", "#1d4ed8"],
@@ -47,8 +29,30 @@ function messageBadge(status: string) {
     failed: ["#fee2e2", "#991b1b"],
   };
 
-  const [bg, color] = colors[status] || ["#f3f4f6", "#374151"];
-  return badge(status, bg, color);
+  const [bg, color] = colors[status || ""] || ["#f3f4f6", "#374151"];
+  return badge(status || "not_sent", bg, color);
+}
+
+function healthBadge(customer: any) {
+  const health = customer?.marketing_health;
+  const failCount = customer?.marketing_fail_count || 0;
+  const cooldown = customer?.marketing_cooldown_until;
+
+  const inCooldown =
+    cooldown && new Date(cooldown).getTime() > Date.now();
+
+  if (health === "blocked") return badge("⚫ Blocked", "#e5e7eb", "#111827");
+  if (health === "opt_out") return badge("⚫ Opt-out", "#e5e7eb", "#111827");
+
+  if (inCooldown || health === "cooldown") {
+    return badge("🔴 Cooldown", "#fee2e2", "#991b1b");
+  }
+
+  if (health === "warning" || failCount >= 1) {
+    return badge("🟡 Warning", "#fef3c7", "#92400e");
+  }
+
+  return badge("🟢 Healthy", "#dcfce7", "#166534");
 }
 
 export default async function CampaignDetailPage({
@@ -75,10 +79,14 @@ export default async function CampaignDetailPage({
         phone,
         product,
         city,
+        marketing_health,
         marketing_fail_count,
         last_marketing_fail_reason,
         last_marketing_fail_at,
-        marketing_cooldown_until
+        marketing_cooldown_until,
+        total_replies,
+        total_orders,
+        lifetime_value_in_paise
       )
     `)
     .eq("campaign_id", id)
@@ -89,17 +97,29 @@ export default async function CampaignDetailPage({
     .select("*")
     .eq("campaign_id", id);
 
-  const logMap = new Map((logs || []).map((l: any) => [l.phone, l]));
-
   const rows = recipients || [];
+  const logMap = new Map((logs || []).map((l: any) => [l.phone, l]));
+  console.log("rows", rows)
 
-  const sent = logs?.filter((x: any) =>
-    ["accepted", "sent", "delivered", "read"].includes(x.status)
-  ).length || 0;
+  const sent =
+    logs?.filter((x: any) =>
+      ["accepted", "sent", "delivered", "read"].includes(x.status)
+    ).length || 0;
 
-  const delivered = logs?.filter((x: any) => x.status === "delivered").length || 0;
+  const delivered =
+    logs?.filter((x: any) => x.status === "delivered").length || 0;
+
   const read = logs?.filter((x: any) => x.status === "read").length || 0;
   const failed = logs?.filter((x: any) => x.status === "failed").length || 0;
+
+  const phones = [...new Set((logs || []).map((x: any) => x.phone))];
+
+  const { data: replies } = await supabase
+    .from("message_logs")
+    .select("*")
+    .eq("direction", "inbound")
+    .in("phone", phones.length ? phones : ["none"])
+    .gte("created_at", campaign?.created_at || new Date().toISOString());
 
   return (
     <main style={{ padding: 24, background: "#fafafa", minHeight: "100vh" }}>
@@ -111,33 +131,29 @@ export default async function CampaignDetailPage({
 
       <h1>{campaign?.name || "Campaign"}</h1>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
-          gap: 16,
-          marginBottom: 20,
-        }}
-      >
-        <Stat title="Audience" value={campaign?.total_recipients || rows.length} />
-        <Stat title="Sent" value={sent} />
-        <Stat title="Delivered" value={delivered} />
-        <Stat title="Failed" value={failed} />
-      </div>
+      <p style={{ color: "#666" }}>
+        Template: <b>{campaign?.template_name}</b> | Status:{" "}
+        <b>{campaign?.status}</b> | Coupon:{" "}
+        <b>{campaign?.coupon_code || "-"}</b>
+      </p>
 
       <div
         style={{
-          background: "#fff",
-          border: "1px solid #e5e7eb",
-          borderRadius: 14,
-          padding: 16,
-          marginBottom: 20,
+          display: "grid",
+          gridTemplateColumns: "repeat(5, 1fr)",
+          gap: 16,
+          margin: "20px 0",
         }}
       >
-        <p><b>Template:</b> {campaign?.template_name}</p>
-        <p><b>Status:</b> {campaign?.status}</p>
-        <p><b>Coupon:</b> {campaign?.coupon_code || "-"}</p>
-        <p><b>Created:</b> {campaign?.created_at ? new Date(campaign.created_at).toLocaleString() : "-"}</p>
+        <Stat title="Audience" value={rows.length} />
+        <Stat title="Sent" value={sent} />
+        <Stat title="Delivered" value={delivered} />
+        <Stat title="Read" value={read} />
+        <Stat title="Failed" value={failed} />
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <Stat title="Replies After Campaign" value={replies?.length || 0} />
       </div>
 
       <table
@@ -148,15 +164,17 @@ export default async function CampaignDetailPage({
           border: "1px solid #e5e7eb",
         }}
       >
-        <thead>
+        <thead style={{ background: "#f9fafb" }}>
           <tr>
             <th style={th}>Name</th>
             <th style={th}>Phone</th>
             <th style={th}>Product</th>
-            <th style={th}>City</th>
-            <th style={th}>Message</th>
-            <th style={th}>Health</th>
-            <th style={th}>Fail Reason</th>
+            <th style={th}>Message Status</th>
+            <th style={th}>Customer Health</th>
+            <th style={th}>Fails</th>
+            <th style={th}>Reason</th>
+            <th style={th}>Replies</th>
+            <th style={th}>Orders</th>
             <th style={th}>Chat</th>
           </tr>
         </thead>
@@ -171,17 +189,20 @@ export default async function CampaignDetailPage({
 
             return (
               <tr key={r.id}>
-                <td style={td}>{r.name}</td>
+                <td style={td}>{r.name || customer?.name || "Unknown"}</td>
                 <td style={td}>{r.phone}</td>
                 <td style={td}>{r.product || customer?.product || "-"}</td>
-                <td style={td}>{r.city || customer?.city || "-"}</td>
-                <td style={td}>
-                  {log ? messageBadge(log.status) : badge(r.status, "#f3f4f6", "#374151")}
-                </td>
+                <td style={td}>{statusBadge(log?.status || r.status)}</td>
                 <td style={td}>{healthBadge(customer)}</td>
+                <td style={td}>{customer?.marketing_fail_count || 0}</td>
                 <td style={td}>
-                  {customer?.last_marketing_fail_reason || log?.error || r.reason || "-"}
+                  {log?.error ||
+                    customer?.last_marketing_fail_reason ||
+                    r.reason ||
+                    "-"}
                 </td>
+                <td style={td}>{customer?.total_replies || 0}</td>
+                <td style={td}>{customer?.total_orders || 0}</td>
                 <td style={td}>
                   <Link href={`/inbox/${r.phone}`}>Open</Link>
                 </td>
@@ -213,11 +234,13 @@ function Stat({ title, value }: { title: string; value: any }) {
 const th = {
   textAlign: "left" as const,
   padding: 10,
-  borderBottom: "1px solid #ddd",
+  borderBottom: "1px solid #e5e7eb",
+  fontSize: 13,
 };
 
 const td = {
   padding: 10,
   borderBottom: "1px solid #eee",
+  fontSize: 14,
   verticalAlign: "top" as const,
 };

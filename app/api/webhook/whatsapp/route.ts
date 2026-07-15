@@ -7,7 +7,7 @@ function getFailReason(status: any) {
   if (!err) return null;
 
   return {
-    code: err.code,
+    code: Number(err.code),
     title: err.title || err.message || "Unknown failure",
     details: err.error_data?.details || err.message || "",
   };
@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
       for (const change of changes) {
         const value = change.value;
 
+        // Incoming customer messages
         const messages = value.messages || [];
 
         for (const msg of messages) {
@@ -74,11 +75,28 @@ export async function POST(req: NextRequest) {
                 phone,
                 source: "whatsapp",
                 consent: true,
+                marketing_health: "healthy",
+                marketing_fail_count: 0,
+                total_replies: 1,
+                last_message_at: new Date().toISOString(),
               })
               .select()
               .single();
 
             customerId = newCustomer?.id;
+          } else {
+            await supabase
+              .from("customers")
+              .update({
+                marketing_health: "healthy",
+                marketing_fail_count: 0,
+                last_marketing_fail_reason: null,
+                last_marketing_fail_at: null,
+                marketing_cooldown_until: null,
+                total_replies: (existingCustomer.total_replies || 0) + 1,
+                last_message_at: new Date().toISOString(),
+              })
+              .eq("id", existingCustomer.id);
           }
 
           await supabase.from("message_logs").insert({
@@ -92,6 +110,7 @@ export async function POST(req: NextRequest) {
           });
         }
 
+        // Delivery/read/failed status updates
         const statuses = value.statuses || [];
 
         for (const status of statuses) {
@@ -120,10 +139,12 @@ export async function POST(req: NextRequest) {
             await supabase
               .from("customers")
               .update({
+                marketing_health: "healthy",
                 marketing_fail_count: 0,
                 last_marketing_fail_reason: null,
                 last_marketing_fail_at: null,
                 marketing_cooldown_until: null,
+                last_message_at: new Date().toISOString(),
               })
               .eq("phone", log.phone);
           }
@@ -136,6 +157,7 @@ export async function POST(req: NextRequest) {
               .maybeSingle();
 
             const currentFailCount = customer?.marketing_fail_count || 0;
+
             const newFailCount = shouldIncreaseFailCount(failReason.code)
               ? currentFailCount + 1
               : currentFailCount;
@@ -150,6 +172,7 @@ export async function POST(req: NextRequest) {
             await supabase
               .from("customers")
               .update({
+                marketing_health: newFailCount >= 3 ? "cooldown" : "warning",
                 marketing_fail_count: newFailCount,
                 last_marketing_fail_reason: `${failReason.code}: ${failReason.title}`,
                 last_marketing_fail_at: new Date().toISOString(),

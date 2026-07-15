@@ -187,7 +187,7 @@ export default async function CampaignHistory() {
                   {new Date(row.campaign.created_at).toLocaleString()}
                 </td>
                 <td style={td}>
-  <Link href={`/campaign-history/${row.campaign.id}`}>View</Link>
+  <Link href={`/campaign-history/${row.campaign.id}`}>Action</Link>
 </td>
               </tr>
             ))}

@@ -15,8 +15,7 @@ export async function POST(req: NextRequest) {
     }
 
     const campaignId = String(form.get("campaign_id") || "");
-    const sendEveryoneAnyway =
-      String(form.get("send_everyone_anyway") || "") === "yes";
+    const sendMode = String(form.get("send_mode") || "healthy");
 
     if (!campaignId) {
       return NextResponse.json(
@@ -47,10 +46,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let allowedStatuses = ["ready", "warning"];
+    let allowedStatuses: string[];
 
-    if (sendEveryoneAnyway) {
+    if (sendMode === "healthy") {
+      allowedStatuses = ["ready"];
+    } else if (sendMode === "healthy_warning") {
+      allowedStatuses = ["ready", "warning"];
+    } else if (sendMode === "everyone") {
       allowedStatuses = ["ready", "warning", "cooldown"];
+    } else {
+      allowedStatuses = ["ready"];
     }
 
     const { data: recipients, error: recipientsError } = await supabase
@@ -212,16 +217,20 @@ export async function POST(req: NextRequest) {
       })
       .eq("id", campaignId);
 
-    return NextResponse.json({
-      campaignId,
-      campaignName: campaign.name,
-      templateName: campaign.template_name,
-      overrideUsed: sendEveryoneAnyway,
-      total: results.length,
-      sent: sentCount,
-      failed: failedCount,
-      results,
-    });
+    // return NextResponse.json({
+    //   campaignId,
+    //   campaignName: campaign.name,
+    //   templateName: campaign.template_name,
+    //   overrideUsed: sendMode,
+    //   total: results.length,
+    //   sent: sentCount,
+    //   failed: failedCount,
+    //   results,
+    // });
+    return NextResponse.redirect(
+      new URL(`/campaign-history/${campaignId}`, req.url),
+      303
+    );
   } catch (e: any) {
     return NextResponse.json(
       { error: e.message || "Campaign send failed" },

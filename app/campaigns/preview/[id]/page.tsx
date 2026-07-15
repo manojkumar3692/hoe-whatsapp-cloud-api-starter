@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 function statusBadge(status: string) {
   const styles: any = {
-    ready: ["#dcfce7", "#166534", "🟢 Ready"],
+    ready: ["#dcfce7", "#166534", "🟢 Healthy"],
     warning: ["#fef3c7", "#92400e", "🟡 Warning"],
     cooldown: ["#fee2e2", "#991b1b", "🔴 Cooldown"],
     already_sent: ["#e5e7eb", "#374151", "⚪ Already Sent"],
@@ -28,6 +28,73 @@ function statusBadge(status: string) {
     >
       {label}
     </span>
+  );
+}
+
+function SendBox({
+  campaignId,
+  title,
+  mode,
+  count,
+  note,
+}: {
+  campaignId: string;
+  title: string;
+  mode: string;
+  count: number;
+  note: string;
+}) {
+  return (
+    <form
+      action="/api/campaigns/send"
+      method="POST"
+      style={{
+        background: "#fff",
+        border: "1px solid #e5e7eb",
+        borderRadius: 14,
+        padding: 18,
+      }}
+    >
+      <input type="hidden" name="campaign_id" value={campaignId} />
+      <input type="hidden" name="send_mode" value={mode} />
+
+      <h3>{title}</h3>
+
+      <div style={{ fontSize: 32, fontWeight: 800, marginBottom: 8 }}>
+        {count}
+      </div>
+
+      <p style={{ color: "#666", minHeight: 44 }}>{note}</p>
+
+      <input
+        name="admin_password"
+        type="password"
+        placeholder="Admin password"
+        required
+        style={{
+          padding: 10,
+          width: "100%",
+          marginBottom: 12,
+          boxSizing: "border-box",
+        }}
+      />
+
+      <button
+        type="submit"
+        disabled={count === 0}
+        style={{
+          padding: "10px 18px",
+          background: count === 0 ? "#999" : "#111",
+          color: "#fff",
+          border: 0,
+          borderRadius: 8,
+          cursor: count === 0 ? "not-allowed" : "pointer",
+          width: "100%",
+        }}
+      >
+        Send
+      </button>
+    </form>
   );
 }
 
@@ -56,10 +123,9 @@ export default async function CampaignPreviewPage({
   const ready = rows.filter((r: any) => r.status === "ready").length;
   const warning = rows.filter((r: any) => r.status === "warning").length;
   const cooldown = rows.filter((r: any) => r.status === "cooldown").length;
-  const alreadySent = rows.filter((r: any) => r.status === "already_sent").length;
-
-  const normalSendCount = ready + warning;
-  const overrideSendCount = rows.length - alreadySent;
+  const alreadySent = rows.filter(
+    (r: any) => r.status === "already_sent"
+  ).length;
 
   return (
     <main style={{ padding: 24, background: "#fafafa", minHeight: "100vh" }}>
@@ -79,59 +145,58 @@ export default async function CampaignPreviewPage({
         }}
       >
         <h2>{campaign?.name}</h2>
-        <p><b>Template:</b> {campaign?.template_name}</p>
-        <p><b>Total Uploaded:</b> {rows.length}</p>
-        <p><b>Ready:</b> {ready}</p>
-        <p><b>Warning:</b> {warning}</p>
-        <p><b>Cooldown:</b> {cooldown}</p>
-        <p><b>Already Sent Before:</b> {alreadySent}</p>
+        <p>
+          <b>Template:</b> {campaign?.template_name}
+        </p>
+        <p>
+          <b>Total Uploaded:</b> {rows.length}
+        </p>
+        <p>
+          <b>Healthy:</b> {ready}
+        </p>
+        <p>
+          <b>Warning:</b> {warning}
+        </p>
+        <p>
+          <b>Cooldown:</b> {cooldown}
+        </p>
+        <p>
+          <b>Already Sent Before:</b> {alreadySent}
+        </p>
       </div>
 
-      <form
-        action="/api/campaigns/send"
-        method="POST"
+      <div
         style={{
-          background: "#fff",
-          border: "1px solid #e5e7eb",
-          borderRadius: 14,
-          padding: 18,
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          gap: 16,
           marginBottom: 20,
         }}
       >
-        <input type="hidden" name="campaign_id" value={id} />
-
-        <input
-          name="admin_password"
-          type="password"
-          placeholder="Admin password"
-          required
-          style={{ padding: 10, marginRight: 10 }}
+        <SendBox
+          campaignId={id}
+          title="Send Healthy Only"
+          mode="healthy"
+          count={ready}
+          note="Safest option. Sends only healthy customers."
         />
 
-        <label style={{ display: "block", marginTop: 14, marginBottom: 14 }}>
-          <input type="checkbox" name="send_everyone_anyway" value="yes" />{" "}
-          Send to everyone anyway, including cooldown customers
-        </label>
+        <SendBox
+          campaignId={id}
+          title="Send Healthy + Warning"
+          mode="healthy_warning"
+          count={ready + warning}
+          note="Recommended if you want more reach."
+        />
 
-        <button
-          type="submit"
-          style={{
-            padding: "10px 18px",
-            background: "#111",
-            color: "#fff",
-            border: 0,
-            borderRadius: 8,
-            cursor: "pointer",
-          }}
-        >
-          Send Campaign
-        </button>
-
-        <p style={{ color: "#666", marginTop: 10 }}>
-          Normal send: {normalSendCount}. With override: {overrideSendCount}.
-          Already-sent customers are still skipped.
-        </p>
-      </form>
+        <SendBox
+          campaignId={id}
+          title="Send Everyone Anyway"
+          mode="everyone"
+          count={ready + warning + cooldown}
+          note="Includes cooldown customers. Use carefully."
+        />
+      </div>
 
       <table
         style={{
