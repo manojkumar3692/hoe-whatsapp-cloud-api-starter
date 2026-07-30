@@ -106,7 +106,7 @@ export default async function TemplatesPage({
             <label style={label}>Template name</label>
             <input
               name="name"
-              defaultValue="abandoned_cart_recovery"
+              defaultValue="abandoned_cart_recovery_v2"
               placeholder="e.g. desert_tonka_launch"
               required
               style={input}
@@ -141,13 +141,14 @@ export default async function TemplatesPage({
 
           <div>
             <label style={label}>Header type</label>
-            <select name="header_type" defaultValue="text" style={input}>
+            <select name="header_type" defaultValue="image" style={input}>
               <option value="none">No header</option>
               <option value="text">Text header</option>
+              <option value="image">Image header</option>
             </select>
             <div style={hint}>
-              Image/video headers need a separate media upload step — not
-              supported here yet.
+              Image header uploads the URL below to Meta once as the review
+              example. Video/document headers aren&apos;t supported here yet.
             </div>
           </div>
 
@@ -159,6 +160,22 @@ export default async function TemplatesPage({
               placeholder="Optional short header"
               style={input}
             />
+          </div>
+
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label style={label}>Header image URL (if image header)</label>
+            <input
+              name="header_image_url"
+              defaultValue="https://fvctxehmnzprbqhrxukc.supabase.co/storage/v1/object/public/campaign-image/sgold-lifestyle-3.png"
+              placeholder="https://.../banner.jpg"
+              style={input}
+            />
+            <div style={hint}>
+              ⚠️ Fill this in before submitting — a real, publicly reachable
+              image URL (JPEG/PNG, under 5MB). Used once now as Meta&apos;s
+              review example; sends later can use a different URL per
+              message (e.g. per-product), this one is just the default.
+            </div>
           </div>
 
           <div style={{ gridColumn: "1 / -1" }}>

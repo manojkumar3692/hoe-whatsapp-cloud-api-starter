@@ -3,7 +3,7 @@ import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 import { normalizePhone } from "../../../../lib/phone";
 import { sendTemplateMessage } from "../../../../lib/whatsapp";
 import { getFirstCartItem, cartItemName, cartItemSlug } from "../../../../lib/cartItems";
-import { resolveProductSlug } from "../../../../lib/productCatalog";
+import { resolveProductSlug, resolveProductImageUrl } from "../../../../lib/productCatalog";
 
 // Meant to be hit on a schedule (Vercel Cron, or an external cron pinger —
 // see vercel.json / README). Finds checkout sessions that:
@@ -148,12 +148,24 @@ export async function GET(req: NextRequest) {
     const productPathPrefix = process.env.STOREFRONT_PRODUCT_PATH_PREFIX || "products";
     const buttonUrlParam = realProductSlug ? `${productPathPrefix}/${realProductSlug}` : "";
 
+    // Only pass a header image if the active template actually has an
+    // image header component — sending one to a text-header (or no
+    // header) template gets rejected by Meta as an unexpected component,
+    // and omitting it for an image-header template gets rejected as
+    // missing. Flip META_ABANDONED_CART_HEADER_IS_IMAGE=true once you
+    // switch META_ABANDONED_CART_TEMPLATE to the image-header version.
+    const useImageHeader = process.env.META_ABANDONED_CART_HEADER_IS_IMAGE === "true";
+    const headerImageUrl = useImageHeader
+      ? resolveProductImageUrl(productId) || undefined
+      : undefined;
+
     try {
       const wa = await sendTemplateMessage({
         to: phone,
         templateName,
         languageCode: process.env.META_ABANDONED_CART_LANGUAGE || "en",
         bodyParams: [customerName, productName],
+        headerImageUrl,
         buttonUrlParam,
       });
 

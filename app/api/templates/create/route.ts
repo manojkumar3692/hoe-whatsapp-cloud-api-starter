@@ -4,6 +4,7 @@ import {
   createMetaTemplate,
   extractVariableCount,
   normalizeTemplateName,
+  uploadTemplateHeaderImage,
 } from "../../../../lib/templates";
 
 export async function POST(req: NextRequest) {
@@ -19,8 +20,10 @@ export async function POST(req: NextRequest) {
     const language = String(form.get("language") || "en");
     const headerType = String(form.get("header_type") || "none") as
       | "none"
-      | "text";
+      | "text"
+      | "image";
     const headerText = String(form.get("header_text") || "").trim();
+    const headerImageUrl = String(form.get("header_image_url") || "").trim();
     const bodyText = String(form.get("body_text") || "").trim();
     const footerText = String(form.get("footer_text") || "").trim();
     const buttonType = String(form.get("button_type") || "none") as
@@ -42,6 +45,13 @@ export async function POST(req: NextRequest) {
     if (!bodyText) {
       return NextResponse.json(
         { error: "Body text required" },
+        { status: 400 }
+      );
+    }
+
+    if (headerType === "image" && !headerImageUrl) {
+      return NextResponse.json(
+        { error: "Header image URL required when header type is Image" },
         { status: 400 }
       );
     }
@@ -68,6 +78,7 @@ export async function POST(req: NextRequest) {
     const componentsSnapshot = {
       headerType,
       headerText,
+      headerImageUrl,
       bodyText,
       bodyExamples,
       footerText,
@@ -80,12 +91,22 @@ export async function POST(req: NextRequest) {
     let metaResult;
 
     try {
+      let headerImageHandle: string | undefined;
+
+      if (headerType === "image") {
+        // One-time upload so Meta has an example image to review. Sending
+        // this template later uses a plain URL per message instead (see
+        // sendTemplateMessage) — this handle is only for template creation.
+        headerImageHandle = await uploadTemplateHeaderImage(headerImageUrl);
+      }
+
       metaResult = await createMetaTemplate({
         name,
         category,
         language,
         headerType,
         headerText: headerType === "text" ? headerText : undefined,
+        headerImageHandle,
         bodyText,
         bodyExamples: bodyExamples.length ? bodyExamples : undefined,
         footerText: footerText || undefined,

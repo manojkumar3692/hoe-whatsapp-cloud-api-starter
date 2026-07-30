@@ -14,6 +14,64 @@ function token() {
   return t;
 }
 
+function appId() {
+  const id = process.env.META_APP_ID;
+  if (!id) throw new Error("Missing META_APP_ID env var");
+  return id;
+}
+
+// Template creation with an IMAGE/VIDEO/DOCUMENT header needs ONE example
+// file uploaded via Meta's Resumable Upload API first — you can't just
+// hand the create-template call a URL for this step (sending later is
+// different: that accepts a plain URL per message, see sendTemplateMessage
+// in lib/whatsapp.ts). This fetches the image from imageUrl server-side
+// and uploads it, returning the handle to use as the template's header
+// example. Handle expires ~24h, so call this right before creating the
+// template, not far in advance.
+export async function uploadTemplateHeaderImage(imageUrl: string) {
+  const imgRes = await fetch(imageUrl);
+
+  if (!imgRes.ok) {
+    throw new Error(`Could not fetch header image from ${imageUrl} (${imgRes.status})`);
+  }
+
+  const contentType = imgRes.headers.get("content-type") || "image/jpeg";
+  const buffer = Buffer.from(await imgRes.arrayBuffer());
+
+  const startRes = await fetch(
+    `https://graph.facebook.com/${version()}/${appId()}/uploads?file_name=header.jpg&file_length=${buffer.length}&file_type=${encodeURIComponent(
+      contentType
+    )}&access_token=${encodeURIComponent(token())}`,
+    { method: "POST" }
+  );
+
+  const startJson = await startRes.json();
+
+  if (!startRes.ok || !startJson.id) {
+    throw new Error(startJson?.error?.message || JSON.stringify(startJson));
+  }
+
+  const uploadRes = await fetch(
+    `https://graph.facebook.com/${version()}/${startJson.id}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `OAuth ${token()}`,
+        file_offset: "0",
+      },
+      body: buffer,
+    }
+  );
+
+  const uploadJson = await uploadRes.json();
+
+  if (!uploadRes.ok || !uploadJson.h) {
+    throw new Error(uploadJson?.error?.message || JSON.stringify(uploadJson));
+  }
+
+  return uploadJson.h as string;
+}
+
 // Meta template names must be lowercase, alphanumeric + underscores only.
 export function normalizeTemplateName(raw: string) {
   return (raw || "")
@@ -36,8 +94,9 @@ export type CreateTemplateInput = {
   name: string;
   category: string; // MARKETING | UTILITY | AUTHENTICATION
   language: string; // e.g. en, en_US, hi
-  headerType: "none" | "text";
+  headerType: "none" | "text" | "image";
   headerText?: string;
+  headerImageHandle?: string; // from uploadTemplateHeaderImage()
   bodyText: string;
   bodyExamples?: string[];
   footerText?: string;
@@ -55,6 +114,14 @@ function buildComponents(input: CreateTemplateInput) {
       type: "HEADER",
       format: "TEXT",
       text: input.headerText,
+    });
+  }
+
+  if (input.headerType === "image" && input.headerImageHandle) {
+    components.push({
+      type: "HEADER",
+      format: "IMAGE",
+      example: { header_handle: [input.headerImageHandle] },
     });
   }
 
