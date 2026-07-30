@@ -77,7 +77,8 @@ export default async function Home() {
         <Link href="/campaigns">Campaigns</Link>{" | "}
         <Link href="/campaign-history">Campaign History</Link>{" | "}
         <Link href="/inbox">Inbox</Link>{" | "}
-        <Link href="/messages">Messages</Link>
+        <Link href="/messages">Messages</Link>{" | "}
+        <Link href="/templates">Templates</Link>
       </nav>
 
       <h1>HOUSE OF EON CRM</h1>

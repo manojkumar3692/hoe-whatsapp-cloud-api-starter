@@ -135,7 +135,10 @@ export async function POST(req: NextRequest) {
           languageCode: "en",
           bodyParams,
           headerImageUrl: campaign.header_image_url || "",
-          buttonUrlParam: "",
+          // No dynamic URL button data stored on campaigns today — leave
+          // undefined so sendTemplateMessage omits the button component
+          // (a defined-but-empty string would now be sent as a literal
+          // button parameter, which breaks templates with no button at all).
         });
 
         const wamid = wa.messages?.[0]?.id;

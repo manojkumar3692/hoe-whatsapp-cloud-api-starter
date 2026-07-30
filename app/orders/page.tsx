@@ -161,7 +161,8 @@ export default async function OrdersPage({
         <Link href="/customers">Customers</Link>{" | "}
         <Link href="/campaigns">Campaigns</Link>{" | "}
         <Link href="/inbox">Inbox</Link>{" | "}
-        <Link href="/campaign-history">Campaign History</Link>
+        <Link href="/campaign-history">Campaign History</Link>{" | "}
+        <Link href="/templates">Templates</Link>
       </nav>
 
       <h1 style={{ marginBottom: 20 }}>Orders</h1>

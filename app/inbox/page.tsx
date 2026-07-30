@@ -13,6 +13,7 @@ function badge(text: string, bg: string, color: string) {
         borderRadius: 999,
         fontSize: 12,
         fontWeight: 700,
+        whiteSpace: "nowrap",
       }}
     >
       {text}
@@ -20,10 +21,79 @@ function badge(text: string, bg: string, color: string) {
   );
 }
 
+const AVATAR_COLORS = ["#2563eb", "#7c3aed", "#db2777", "#dc2626", "#d97706", "#059669", "#0891b2"];
+
+function avatar(name: string, size = 40) {
+  const letter = (name || "?").trim().charAt(0).toUpperCase() || "?";
+  let hash = 0;
+  for (let i = 0; i < (name || "").length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  const color = AVATAR_COLORS[hash % AVATAR_COLORS.length];
+
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        background: color,
+        color: "#fff",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: size * 0.4,
+        fontWeight: 700,
+        flexShrink: 0,
+      }}
+    >
+      {letter}
+    </div>
+  );
+}
+
+function relativeTime(iso: string) {
+  const date = new Date(iso);
+  const diffMs = Date.now() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+
+  if (diffMin < 1) return "Just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay === 1) return "Yesterday";
+  if (diffDay < 7) return `${diffDay}d ago`;
+
+  return date.toLocaleDateString();
+}
+
+function Stat({ title, value, accent }: { title: string; value: any; accent: string }) {
+  return (
+    <div
+      style={{
+        background: "#fff",
+        border: "1px solid #e5e7eb",
+        borderRadius: 14,
+        padding: 18,
+        borderLeft: `4px solid ${accent}`,
+      }}
+    >
+      <div style={{ fontSize: 13, color: "#777" }}>{title}</div>
+      <div style={{ fontSize: 28, fontWeight: 800, marginTop: 4 }}>{value}</div>
+    </div>
+  );
+}
+
 export default async function InboxPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: string; q?: string }>;
+  searchParams: Promise<{
+    filter?: string;
+    q?: string;
+    backfilled?: string;
+    backfill_skipped?: string;
+  }>;
 }) {
   const params = await searchParams;
   const filter = params.filter || "all";
@@ -118,18 +188,99 @@ export default async function InboxPage({
     (m: any) => m.direction === "outbound"
   ).length;
 
+  const hasFilters = !!(params.q || (params.filter && params.filter !== "all"));
+
   return (
     <main style={{ padding: 24, background: "#fafafa", minHeight: "100vh" }}>
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `.chat-row:hover { border-color: #cbd5e1 !important; box-shadow: 0 2px 10px rgba(0,0,0,.05); }`,
+        }}
+      />
+
       <nav style={{ marginBottom: 24 }}>
         <Link href="/">Home</Link>{" | "}
         <Link href="/orders">Orders</Link>{" | "}
         <Link href="/customers">Customers</Link>{" | "}
         <Link href="/campaigns">Campaigns</Link>{" | "}
         <Link href="/campaign-history">Campaign History</Link>{" | "}
-        <Link href="/messages">Messages</Link>
+        <Link href="/messages">Messages</Link>{" | "}
+        <Link href="/templates">Templates</Link>
       </nav>
 
-      <h1>Inbox</h1>
+      <h1 style={{ marginBottom: 4 }}>Inbox</h1>
+      <p style={{ color: "#666", marginBottom: 20 }}>
+        Every WhatsApp conversation, newest and most urgent first.
+      </p>
+
+      {params.backfilled && (
+        <div
+          style={{
+            background: "#dbeafe",
+            color: "#1d4ed8",
+            padding: 12,
+            borderRadius: 10,
+            marginBottom: 20,
+            fontSize: 14,
+          }}
+        >
+          Backfill complete: {params.backfilled} message preview(s) updated
+          {params.backfill_skipped && Number(params.backfill_skipped) > 0
+            ? `, ${params.backfill_skipped} skipped`
+            : ""}
+          .
+        </div>
+      )}
+
+      <details
+        style={{
+          background: "#fff",
+          border: "1px solid #e5e7eb",
+          borderRadius: 14,
+          padding: 16,
+          marginBottom: 20,
+        }}
+      >
+        <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 14 }}>
+          🛠 Maintenance
+        </summary>
+
+        <p style={{ color: "#666", fontSize: 13, marginTop: 10, marginBottom: 12 }}>
+          One-time cleanup: rewrites list preview text for older messages
+          (photos, voice notes, button taps, locations...) that were saved
+          before message types were parsed properly. Uses each message&apos;s
+          original WhatsApp payload — nothing is deleted, and it&apos;s safe
+          to run more than once.
+        </p>
+
+        <form
+          action="/api/admin/backfill-message-bodies"
+          method="POST"
+          style={{ display: "flex", gap: 10, flexWrap: "wrap" }}
+        >
+          <input
+            type="password"
+            name="admin_password"
+            placeholder="Admin Password"
+            required
+            style={{ ...inputStyle, width: 220 }}
+          />
+          <button
+            type="submit"
+            style={{
+              padding: "10px 18px",
+              borderRadius: 8,
+              border: 0,
+              background: "#111",
+              color: "#fff",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Backfill Previews
+          </button>
+        </form>
+      </details>
 
       <div
         style={{
@@ -139,9 +290,9 @@ export default async function InboxPage({
           marginBottom: 20,
         }}
       >
-        <Stat title="Total Chats" value={totalChats} />
-        <Stat title="Needs Reply" value={needsReplyCount} />
-        <Stat title="Sent by Us" value={outboundCount} />
+        <Stat title="Total Chats" value={totalChats} accent="#2563eb" />
+        <Stat title="Needs Reply" value={needsReplyCount} accent="#16a34a" />
+        <Stat title="Sent by Us" value={outboundCount} accent="#7c3aed" />
       </div>
 
       <form
@@ -152,9 +303,10 @@ export default async function InboxPage({
           borderRadius: 14,
           padding: 16,
           display: "grid",
-          gridTemplateColumns: "2fr 1fr auto",
+          gridTemplateColumns: "2fr 1fr auto auto",
           gap: 12,
           marginBottom: 20,
+          alignItems: "end",
         }}
       >
         <input
@@ -173,19 +325,51 @@ export default async function InboxPage({
         <button
           type="submit"
           style={{
-            padding: "10px 18px",
+            padding: "11px 18px",
             borderRadius: 8,
             border: 0,
             background: "#111",
             color: "#fff",
             fontWeight: 700,
+            cursor: "pointer",
           }}
         >
           Filter
         </button>
+
+        {hasFilters && (
+          <a
+            href="/inbox"
+            style={{
+              padding: "11px 18px",
+              borderRadius: 8,
+              border: "1px solid #ddd",
+              background: "#fff",
+              color: "#111",
+              fontWeight: 600,
+              textDecoration: "none",
+              textAlign: "center",
+            }}
+          >
+            Clear
+          </a>
+        )}
       </form>
 
-      {chats.length === 0 && <p>No chats found.</p>}
+      {chats.length === 0 && (
+        <div
+          style={{
+            background: "#fff",
+            border: "1px dashed #ddd",
+            borderRadius: 14,
+            padding: 40,
+            textAlign: "center",
+            color: "#888",
+          }}
+        >
+          No chats found.
+        </div>
+      )}
 
       {chats.map((chat: any) => {
         const customer = chat.customer;
@@ -194,8 +378,11 @@ export default async function InboxPage({
           <Link
             key={chat.phone}
             href={`/inbox/${chat.phone}`}
+            className="chat-row"
             style={{
-              display: "block",
+              display: "flex",
+              gap: 14,
+              alignItems: "flex-start",
               textDecoration: "none",
               color: "inherit",
               border: chat.needsReply ? "2px solid #16a34a" : "1px solid #e5e7eb",
@@ -203,34 +390,48 @@ export default async function InboxPage({
               padding: 16,
               marginBottom: 12,
               background: chat.needsReply ? "#f0fdf4" : "#fff",
+              transition: "box-shadow .15s ease",
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <div>
-                <strong>{customer?.name || "Unknown"}</strong>{" "}
-                {chat.needsReply
-                  ? badge("Needs Reply", "#dcfce7", "#166534")
-                  : badge("Sent", "#e5e7eb", "#374151")}
+            {avatar(customer?.name || chat.phone)}
+
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                  <strong style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {customer?.name || "Unknown"}
+                  </strong>
+                  {chat.needsReply
+                    ? badge("Needs Reply", "#dcfce7", "#166534")
+                    : badge("Sent", "#e5e7eb", "#374151")}
+                </div>
+
+                <small style={{ color: "#666", flexShrink: 0 }} title={new Date(chat.created_at).toLocaleString()}>
+                  {relativeTime(chat.created_at)}
+                </small>
               </div>
 
-              <small style={{ color: "#666" }}>
-                {new Date(chat.created_at).toLocaleString()}
-              </small>
-            </div>
+              <div style={{ color: "#888", marginTop: 2, fontSize: 13 }}>
+                {chat.phone}
+                {customer?.product ? ` • ${customer.product}` : ""}
+                {customer?.city ? ` • ${customer.city}` : ""}
+              </div>
 
-            <div style={{ color: "#666", marginTop: 6 }}>
-              {chat.phone}
-              {customer?.product ? ` • ${customer.product}` : ""}
-              {customer?.city ? ` • ${customer.city}` : ""}
-            </div>
-
-            <div style={{ marginTop: 10, fontSize: 15 }}>
-              <b>{chat.direction === "inbound" ? "Customer:" : "You:"}</b>{" "}
-              {chat.body || chat.template_name || "[message]"}
-            </div>
-
-            <div style={{ marginTop: 8, fontSize: 12, color: "#777" }}>
-              Status: {chat.status}
+              <div
+                style={{
+                  marginTop: 8,
+                  fontSize: 14,
+                  color: "#333",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <span style={{ color: "#999" }}>
+                  {chat.direction === "inbound" ? "Customer: " : "You: "}
+                </span>
+                {chat.body || chat.template_name || "[message]"}
+              </div>
             </div>
           </Link>
         );
@@ -239,25 +440,10 @@ export default async function InboxPage({
   );
 }
 
-function Stat({ title, value }: { title: string; value: any }) {
-  return (
-    <div
-      style={{
-        background: "#fff",
-        border: "1px solid #e5e7eb",
-        borderRadius: 14,
-        padding: 16,
-      }}
-    >
-      <div style={{ fontSize: 13, color: "#777" }}>{title}</div>
-      <div style={{ fontSize: 28, fontWeight: 800 }}>{value}</div>
-    </div>
-  );
-}
-
 const inputStyle = {
   width: "100%",
   padding: 10,
   borderRadius: 8,
   border: "1px solid #ddd",
+  boxSizing: "border-box" as const,
 };

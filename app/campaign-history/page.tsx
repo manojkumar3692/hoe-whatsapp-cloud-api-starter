@@ -112,7 +112,8 @@ export default async function CampaignHistory() {
         <Link href="/">Home</Link>{" | "}
         <Link href="/campaigns">Send Campaign</Link>{" | "}
         <Link href="/inbox">Inbox</Link>{" | "}
-        <Link href="/orders">Orders</Link>
+        <Link href="/orders">Orders</Link>{" | "}
+        <Link href="/templates">Templates</Link>
       </nav>
 
       <h1>Campaign History</h1>

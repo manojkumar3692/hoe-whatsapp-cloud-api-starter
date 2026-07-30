@@ -1,0 +1,32 @@
+# Hobby-plan-friendly alternative to vercel.json's cron entry.
+# Vercel Cron on the Hobby plan only allows once-a-day schedules — this
+# workflow gets you the every-30-minutes cadence abandoned-cart reminders
+# actually need, for free, on any plan.
+#
+# Setup:
+#   1. Settings -> Secrets and variables -> Actions -> New repository secret
+#      Name: CRON_SECRET   Value: same value as CRON_SECRET in your app's env vars
+#   2. Replace YOUR-DOMAIN.com below with your real deployed domain.
+#   3. If you're using vercel.json's cron instead, delete this file (running
+#      both just means the endpoint gets hit twice — harmless, but pointless).
+#
+# Note: GitHub Actions schedules are best-effort, not exact-to-the-minute,
+# and get auto-disabled after 60 days with no repo activity (just re-enable
+# it from the Actions tab if that happens).
+
+name: Abandoned Cart Reminders
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call reminder endpoint
+        run: |
+          curl -sS -f -X GET \
+            "https://YOUR-DOMAIN.com/api/checkout-sessions/send-abandoned-cart-reminders?delay_minutes=30" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

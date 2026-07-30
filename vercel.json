@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/checkout-sessions/send-abandoned-cart-reminders?delay_minutes=30",
+      "schedule": "*/30 * * * *"
+    }
+  ]
+}
