@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
+import { describeInboundMessage } from "../../../../lib/messageContent";
 
 function getFailReason(status: any) {
   const err = status.errors?.[0];
@@ -51,13 +52,7 @@ export async function POST(req: NextRequest) {
           const phone = msg.from;
           const messageId = msg.id;
 
-          let textBody = "";
-
-          if (msg.type === "text") {
-            textBody = msg.text?.body || "";
-          } else if (msg.type) {
-            textBody = `[${msg.type} message]`;
-          }
+          const textBody = describeInboundMessage(msg);
 
           const { data: existingCustomer } = await supabase
             .from("customers")

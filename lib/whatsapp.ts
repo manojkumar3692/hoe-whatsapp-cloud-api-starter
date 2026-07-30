@@ -44,7 +44,11 @@ export async function sendTemplateMessage(input: {
     });
   }
 
-  if (input.buttonUrlParam) {
+  // Explicit string check, not a truthy check — an empty string "" is a
+  // valid, meaningful button param (e.g. "fall back to the template's base
+  // URL"), so it must still be sent as a real parameter. undefined means
+  // "this template has no dynamic URL button, omit the component".
+  if (typeof input.buttonUrlParam === "string") {
     components.push({
       type: "button",
       sub_type: "url",
@@ -142,4 +146,56 @@ export async function sendTextMessage(input: {
   }
 
   return json;
+}
+
+// Media sent by customers (images, voice notes, documents...) isn't hosted
+// at a public URL — Meta requires a two-step, auth'd fetch: look up a
+// short-lived URL by media id, then download from that URL with the same
+// bearer token. Used by /api/media/[id] to proxy media into the browser.
+export async function getMediaUrl(mediaId: string) {
+  const version = process.env.META_API_VERSION || "v23.0";
+  const token = process.env.META_WHATSAPP_TOKEN;
+
+  if (!token) {
+    throw new Error("Missing META_WHATSAPP_TOKEN");
+  }
+
+  const res = await fetch(`https://graph.facebook.com/${version}/${mediaId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  const json = await res.json();
+
+  if (!res.ok) {
+    throw new Error(json?.error?.message || JSON.stringify(json));
+  }
+
+  return json as {
+    url: string;
+    mime_type: string;
+    file_size: number;
+    id: string;
+  };
+}
+
+export async function fetchMediaBytes(mediaId: string) {
+  const token = process.env.META_WHATSAPP_TOKEN;
+
+  if (!token) {
+    throw new Error("Missing META_WHATSAPP_TOKEN");
+  }
+
+  const { url, mime_type } = await getMediaUrl(mediaId);
+
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to download media ${mediaId} (${res.status})`);
+  }
+
+  const buffer = await res.arrayBuffer();
+
+  return { buffer, mimeType: mime_type || "application/octet-stream" };
 }

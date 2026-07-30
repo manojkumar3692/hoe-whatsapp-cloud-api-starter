@@ -20,6 +20,7 @@ export default async function Campaigns() {
         <a href="/messages">Messages</a>
         <a href="/inbox">Inbox</a>
         <a href="/campaign-history">Campaign History</a>
+        <a href="/templates">Templates</a>
       </div>
 
       <h1>Send Campaign</h1>
