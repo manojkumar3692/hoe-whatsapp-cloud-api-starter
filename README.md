@@ -67,9 +67,10 @@ Setup:
 1. Run `supabase/migrations/003_abandoned_cart.sql`.
 2. Create and get approval for the cart-recovery template at `/templates`, then set `META_ABANDONED_CART_TEMPLATE` to its name.
 3. Set `CRON_SECRET` (already generated in `.env.local` for local dev — generate a new one for production and add it in Vercel's env vars too).
-4. Schedule the endpoint to run every ~30 minutes:
-   - **Vercel Pro**: `vercel.json` already has a cron entry wired up.
-   - **Vercel Hobby**: cron jobs are capped at once/day on Hobby, too infrequent for this. Use `.github/workflows/abandoned-cart-cron.yml` instead (free, runs on GitHub's schedule) — add `CRON_SECRET` as a GitHub Actions repo secret and swap in your real domain.
+4. **Schedule (we're on Vercel Hobby):** Hobby caps native Vercel Cron at once/day with ±59min precision — deploying a `*/30 * * * *` schedule there fails outright. So:
+   - **Primary**: `.github/workflows/abandoned-cart-cron.yml` runs the endpoint every 30 minutes via GitHub Actions (free, no Vercel plan restriction). Add `CRON_SECRET` as a GitHub Actions repo secret (Settings → Secrets and variables → Actions) and swap `YOUR-DOMAIN.com` in the workflow file for your real deployed domain.
+   - **Backup**: `vercel.json` has a once-a-day cron hitting the same endpoint, valid on Hobby, as a safety net in case the GitHub Actions workflow ever stops (it auto-disables after 60 days of repo inactivity — check the Actions tab if reminders stop going out). Calling the endpoint from both is harmless; it only ever messages sessions that haven't been notified yet.
+   - If you upgrade to Vercel Pro later, you can just change `vercel.json`'s schedule to `*/30 * * * *` and drop the GitHub Actions workflow.
 5. To test manually before wiring up a schedule: visit `/api/checkout-sessions/send-abandoned-cart-reminders?admin_password=YOUR_ADMIN_PASSWORD` in a browser.
 
 It skips anyone already marked `opt_out`, `blocked`, or in a marketing `cooldown` from failed sends, and won't message the same session twice.
