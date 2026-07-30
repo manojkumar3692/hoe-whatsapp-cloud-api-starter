@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { supabaseAdmin } from "../../../lib/supabaseAdmin";
+import { parseCartItems, cartItemName } from "../../../lib/cartItems";
+import { normalizePhone } from "../../../lib/phone";
 
 export const dynamic = "force-dynamic";
 
@@ -14,11 +16,18 @@ function StatusBadge({ value }: { value: string }) {
     failed: { bg: "#fee2e2", color: "#991b1b" },
     refunded: { bg: "#e5e7eb", color: "#374151" },
     cancelled: { bg: "#fee2e2", color: "#991b1b" },
+    confirmed: { bg: "#dbeafe", color: "#1d4ed8" },
     packed: { bg: "#dbeafe", color: "#1d4ed8" },
     shipped: { bg: "#e0e7ff", color: "#3730a3" },
     out_for_delivery: { bg: "#fce7f3", color: "#9d174d" },
     delivered: { bg: "#dcfce7", color: "#166534" },
+    completed: { bg: "#dcfce7", color: "#166534" },
     rejected: { bg: "#fee2e2", color: "#991b1b" },
+    return_requested: { bg: "#ffedd5", color: "#9a3412" },
+    returned: { bg: "#e5e7eb", color: "#374151" },
+    collected: { bg: "#dcfce7", color: "#166534" },
+    not_applicable: { bg: "#f3f4f6", color: "#374151" },
+    "cod balance pending": { bg: "#ffedd5", color: "#9a3412" },
   };
 
   const style = colors[value] || { bg: "#f3f4f6", color: "#374151" };
@@ -87,7 +96,15 @@ export default async function OrderDetailPage({
     );
   }
 
-  const items = Array.isArray(order.items) ? order.items : [];
+  const items = parseCartItems(order.items);
+  const whatsappPhone = normalizePhone(order.customer_phone || "");
+  const isPartialCod = order.payment_type === "partial_cod";
+
+  const { data: history } = await supabase
+    .from("order_status_history")
+    .select("*")
+    .eq("order_id", id)
+    .order("created_at", { ascending: false });
 
   return (
     <main style={{ padding: 24, background: "#fafafa", minHeight: "100vh" }}>
@@ -108,6 +125,9 @@ export default async function OrderDetailPage({
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <StatusBadge value={order.payment_status} />
           <StatusBadge value={order.shipping_status} />
+          {isPartialCod && order.cod_balance_status === "pending" && (
+            <StatusBadge value="cod balance pending" />
+          )}
         </div>
       </div>
 
@@ -124,6 +144,24 @@ export default async function OrderDetailPage({
               .filter(Boolean)
               .join(", ")}
           />
+          {whatsappPhone && (
+            <Link
+              href={`/inbox/${whatsappPhone}`}
+              style={{
+                display: "inline-block",
+                marginTop: 6,
+                padding: "9px 16px",
+                borderRadius: 8,
+                background: "#166534",
+                color: "#fff",
+                textDecoration: "none",
+                fontSize: 13,
+                fontWeight: 700,
+              }}
+            >
+              💬 Message on WhatsApp
+            </Link>
+          )}
         </section>
 
         <section style={card}>
@@ -132,6 +170,20 @@ export default async function OrderDetailPage({
           <Info label="Discount" value={formatINR(order.coupon_discount_in_paise)} />
           <Info label="Total" value={formatINR(order.amount_in_paise)} />
           <Info label="Coupon" value={order.coupon_code || "-"} />
+          <Info
+            label="Payment Type"
+            value={isPartialCod ? "Partial (Token + COD balance)" : "Full payment"}
+          />
+          {isPartialCod && (
+            <>
+              <Info label="Token Paid" value={formatINR(order.token_amount_in_paise)} />
+              <Info label="Balance Due (COD)" value={formatINR(order.balance_due_in_paise)} />
+              <Info
+                label="COD Balance Status"
+                value={<StatusBadge value={order.cod_balance_status || "not_applicable"} />}
+              />
+            </>
+          )}
           <Info label="Payment Status" value={<StatusBadge value={order.payment_status} />} />
         </section>
       </div>
@@ -171,7 +223,7 @@ export default async function OrderDetailPage({
 
       <section style={{ ...card, marginTop: 16 }}>
         <h2>Shipping</h2>
-        <Info label="Shipping Status" value={<StatusBadge value={order.shipping_status} />} />
+        <Info label="Order Status" value={<StatusBadge value={order.shipping_status} />} />
         <Info
           label="Tracking URL"
           value={
@@ -188,12 +240,61 @@ export default async function OrderDetailPage({
       </section>
 
       <section style={{ ...card, marginTop: 16 }}>
+        <h2>Order Timeline</h2>
+
+        {(history || []).length === 0 && (
+          <p style={{ color: "#777" }}>No status history yet.</p>
+        )}
+
+        {(history || []).map((h: any, index: number) => (
+          <div
+            key={h.id}
+            style={{
+              display: "flex",
+              gap: 14,
+              paddingBottom: 16,
+              marginBottom: index === history!.length - 1 ? 0 : 16,
+              borderBottom:
+                index === history!.length - 1 ? "none" : "1px solid #f1f1f1",
+            }}
+          >
+            <div style={{ paddingTop: 2 }}>
+              <StatusBadge value={h.status} />
+            </div>
+            <div>
+              {h.note && <div style={{ fontSize: 14, marginBottom: 4 }}>{h.note}</div>}
+              <div style={{ fontSize: 12, color: "#999" }}>
+                {new Date(h.created_at).toLocaleString()}
+              </div>
+            </div>
+          </div>
+        ))}
+      </section>
+
+      <section style={{ ...card, marginTop: 16 }}>
         <h2>Update Order</h2>
 
         <form action="/api/orders/update" method="POST">
           <input type="hidden" name="id" value={order.id} />
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <div style={{ marginBottom: 16 }}>
+            <label>Admin Password</label>
+            <input
+              type="password"
+              name="admin_password"
+              placeholder="Admin Password"
+              required
+              style={input}
+            />
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isPartialCod ? "1fr 1fr 1fr" : "1fr 1fr",
+              gap: 16,
+            }}
+          >
             <div>
               <label>Payment Status</label>
               <select name="payment_status" defaultValue={order.payment_status} style={input}>
@@ -206,16 +307,48 @@ export default async function OrderDetailPage({
             </div>
 
             <div>
-              <label>Shipping Status</label>
+              <label>Order Status</label>
               <select name="shipping_status" defaultValue={order.shipping_status} style={input}>
                 <option value="pending">pending</option>
+                <option value="confirmed">confirmed</option>
                 <option value="packed">packed</option>
                 <option value="shipped">shipped</option>
                 <option value="out_for_delivery">out_for_delivery</option>
                 <option value="delivered">delivered</option>
+                <option value="completed">completed</option>
                 <option value="cancelled">cancelled</option>
+                <option value="return_requested">return_requested</option>
+                <option value="returned">returned</option>
+                <option value="refunded">refunded</option>
                 <option value="rejected">rejected</option>
               </select>
+            </div>
+
+            {isPartialCod && (
+              <div>
+                <label>COD Balance Status</label>
+                <select
+                  name="cod_balance_status"
+                  defaultValue={order.cod_balance_status || "pending"}
+                  style={input}
+                >
+                  <option value="not_applicable">not_applicable</option>
+                  <option value="pending">pending</option>
+                  <option value="collected">collected</option>
+                </select>
+              </div>
+            )}
+          </div>
+
+          <div style={{ marginTop: 16 }}>
+            <label>Status change note (optional)</label>
+            <input
+              name="status_note"
+              placeholder="e.g. Handed to courier, AWB 123456"
+              style={input}
+            />
+            <div style={{ fontSize: 12, color: "#999", marginTop: 4 }}>
+              Recorded on the order timeline above, separate from the general notes below.
             </div>
           </div>
 
