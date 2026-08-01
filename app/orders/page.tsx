@@ -1,4 +1,6 @@
 import Link from "next/link";
+import Header from "../components/Header";
+import OrderStatusQuickEdit from "../components/OrderStatusQuickEdit";
 import { supabaseAdmin } from "../../lib/supabaseAdmin";
 import { parseCartItems, cartItemName } from "../../lib/cartItems";
 import { normalizePhone } from "../../lib/phone";
@@ -146,6 +148,13 @@ export default async function OrdersPage({
   const params = await searchParams;
   const supabase = supabaseAdmin();
 
+  // So a quick inline status change (below) lands back on this same
+  // filtered/searched view instead of resetting to a blank /orders.
+  const returnToQuery = new URLSearchParams(
+    Object.entries(params).filter(([, v]) => v) as [string, string][]
+  ).toString();
+  const returnTo = returnToQuery ? `/orders?${returnToQuery}` : "/orders";
+
   const [{ count: totalCount }] = await Promise.all([
     supabase.from("orders").select("*", { count: "exact", head: true }),
   ]);
@@ -262,14 +271,7 @@ export default async function OrdersPage({
         }}
       />
 
-      <nav style={{ marginBottom: 24 }}>
-        <Link href="/">Home</Link>{" | "}
-        <Link href="/customers">Customers</Link>{" | "}
-        <Link href="/campaigns">Campaigns</Link>{" | "}
-        <Link href="/inbox">Inbox</Link>{" | "}
-        <Link href="/campaign-history">Campaign History</Link>{" | "}
-        <Link href="/templates">Templates</Link>
-      </nav>
+      <Header active="orders" />
 
       <h1 style={{ marginBottom: 4 }}>Orders</h1>
       <p style={{ color: "#666", marginBottom: 20 }}>
@@ -476,7 +478,16 @@ export default async function OrdersPage({
                       )}
                     </td>
                     <td style={td}>{badge(order.payment_status)}</td>
-                    <td style={td}>{badge(order.shipping_status)}</td>
+                    <td style={td}>
+                      <OrderStatusQuickEdit
+                        orderId={order.id}
+                        paymentStatus={order.payment_status}
+                        currentStatus={order.shipping_status}
+                        trackingUrl={order.tracking_url}
+                        notes={order.notes}
+                        returnTo={returnTo}
+                      />
+                    </td>
                     <td style={td}>{order.coupon_code || "-"}</td>
                     <td style={td}>{new Date(order.created_at).toLocaleString()}</td>
                     <td style={td}>

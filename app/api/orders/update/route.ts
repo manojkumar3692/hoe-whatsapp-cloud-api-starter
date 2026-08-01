@@ -65,7 +65,16 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    return NextResponse.redirect(new URL(`/orders/${id}`, req.url), 303);
+    // Defaults to the order detail page (full edit form there), but the
+    // orders list's inline quick-edit passes return_to=/orders (plus
+    // whatever filters were active) so a quick status change doesn't yank
+    // the admin out of the filtered list they were looking at.
+    const returnToRaw = String(form.get("return_to") || "");
+    // Only allow same-site relative paths — never redirect to an
+    // arbitrary/external URL supplied in the form.
+    const returnTo = returnToRaw.startsWith("/") ? returnToRaw : `/orders/${id}`;
+
+    return NextResponse.redirect(new URL(returnTo, req.url), 303);
   } catch (e: any) {
     return NextResponse.json(
       { error: e.message || "Order update failed" },

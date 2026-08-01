@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Header from "../../components/Header";
 import { supabaseAdmin } from "../../../lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -302,13 +303,7 @@ export default async function ChatPage({
 
   return (
     <main style={{ padding: 24, background: "#fafafa", minHeight: "100vh" }}>
-      <nav style={{ marginBottom: 24 }}>
-        <Link href="/inbox">← Inbox</Link>{" | "}
-        <Link href="/customers">Customers</Link>{" | "}
-        <Link href="/campaigns">Campaigns</Link>{" | "}
-        <Link href="/campaign-history">Campaign History</Link>{" | "}
-        <Link href="/templates">Templates</Link>
-      </nav>
+      <Header active="inbox" back={{ href: "/inbox", label: "Inbox" }} />
 
       <div
         style={{

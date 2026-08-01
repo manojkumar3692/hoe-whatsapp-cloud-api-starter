@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Header from "../../../components/Header";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -129,9 +130,7 @@ export default async function CampaignPreviewPage({
 
   return (
     <main style={{ padding: 24, background: "#fafafa", minHeight: "100vh" }}>
-      <nav style={{ marginBottom: 24 }}>
-        <Link href="/campaigns">← Back to Campaigns</Link>
-      </nav>
+      <Header active="campaigns" back={{ href: "/campaigns", label: "Back to Campaigns" }} />
 
       <h1>Preview Campaign</h1>
 

@@ -1,3 +1,4 @@
+import Header from "../components/Header";
 import { supabaseAdmin } from "../../lib/supabaseAdmin";
 export default async function Messages() {
   const supabase = supabaseAdmin();
@@ -8,11 +9,7 @@ export default async function Messages() {
     .limit(100);
   return (
     <main>
-      <div className="nav">
-        <a href="/">Home</a>
-        <a href="/customers">Customers</a>
-        <a href="/campaigns">Campaigns</a>
-      </div>
+      <Header active="messages" />
       <h1>Message Logs</h1>
       <div className="card">
         <table>
