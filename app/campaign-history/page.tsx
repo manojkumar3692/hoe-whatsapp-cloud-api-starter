@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Header from "../components/Header";
 import { supabaseAdmin } from "../../lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -108,13 +109,7 @@ export default async function CampaignHistory() {
 
   return (
     <main style={{ padding: 24, background: "#fafafa", minHeight: "100vh" }}>
-      <nav style={{ marginBottom: 24 }}>
-        <Link href="/">Home</Link>{" | "}
-        <Link href="/campaigns">Send Campaign</Link>{" | "}
-        <Link href="/inbox">Inbox</Link>{" | "}
-        <Link href="/orders">Orders</Link>{" | "}
-        <Link href="/templates">Templates</Link>
-      </nav>
+      <Header active="campaign-history" />
 
       <h1>Campaign History</h1>
 

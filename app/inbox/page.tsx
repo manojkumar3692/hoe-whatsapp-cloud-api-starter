@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Header from "../components/Header";
 import { supabaseAdmin } from "../../lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -198,15 +199,7 @@ export default async function InboxPage({
         }}
       />
 
-      <nav style={{ marginBottom: 24 }}>
-        <Link href="/">Home</Link>{" | "}
-        <Link href="/orders">Orders</Link>{" | "}
-        <Link href="/customers">Customers</Link>{" | "}
-        <Link href="/campaigns">Campaigns</Link>{" | "}
-        <Link href="/campaign-history">Campaign History</Link>{" | "}
-        <Link href="/messages">Messages</Link>{" | "}
-        <Link href="/templates">Templates</Link>
-      </nav>
+      <Header active="inbox" />
 
       <h1 style={{ marginBottom: 4 }}>Inbox</h1>
       <p style={{ color: "#666", marginBottom: 20 }}>

@@ -1,3 +1,4 @@
+import Header from "../components/Header";
 import { supabaseAdmin } from "../../lib/supabaseAdmin";
 
 export default async function Campaigns() {
@@ -14,14 +15,7 @@ export default async function Campaigns() {
 
   return (
     <main>
-      <div className="nav">
-        <a href="/">Home</a>
-        <a href="/customers">Customers</a>
-        <a href="/messages">Messages</a>
-        <a href="/inbox">Inbox</a>
-        <a href="/campaign-history">Campaign History</a>
-        <a href="/templates">Templates</a>
-      </div>
+      <Header active="campaigns" />
 
       <h1>Send Campaign</h1>
 

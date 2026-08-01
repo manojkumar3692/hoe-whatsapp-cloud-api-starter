@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Header from "../components/Header";
 import { supabaseAdmin } from "../../lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -48,15 +49,7 @@ export default async function TemplatesPage({
 
   return (
     <main style={{ padding: 24, background: "#fafafa", minHeight: "100vh" }}>
-      <nav style={{ marginBottom: 24 }}>
-        <Link href="/">Home</Link>{" | "}
-        <Link href="/orders">Orders</Link>{" | "}
-        <Link href="/customers">Customers</Link>{" | "}
-        <Link href="/campaigns">Campaigns</Link>{" | "}
-        <Link href="/campaign-history">Campaign History</Link>{" | "}
-        <Link href="/inbox">Inbox</Link>{" | "}
-        <Link href="/templates">Templates</Link>
-      </nav>
+      <Header active="templates" />
 
       <h1 style={{ marginBottom: 8 }}>WhatsApp Templates</h1>
       <p style={{ color: "#666", marginBottom: 20 }}>

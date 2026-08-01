@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Header from "../../components/Header";
 import { supabaseAdmin } from "../../../lib/supabaseAdmin";
 import { parseCartItems, cartItemName } from "../../../lib/cartItems";
 import { normalizePhone } from "../../../lib/phone";
@@ -108,11 +109,7 @@ export default async function OrderDetailPage({
 
   return (
     <main style={{ padding: 24, background: "#fafafa", minHeight: "100vh" }}>
-      <nav style={{ marginBottom: 24 }}>
-        <Link href="/orders">← Orders</Link>{" | "}
-        <Link href="/customers">Customers</Link>{" | "}
-        <Link href="/inbox">Inbox</Link>
-      </nav>
+      <Header active="orders" back={{ href: "/orders", label: "Orders" }} />
 
       <div style={{ display: "flex", justifyContent: "space-between" }}>
         <div>

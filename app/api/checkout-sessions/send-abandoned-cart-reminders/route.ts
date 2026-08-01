@@ -82,10 +82,20 @@ export async function GET(req: NextRequest) {
   // account-quality tradeoff this carries (WhatsApp can throttle/restrict
   // a number based on block/report rates). opt_out / blocked / cooldown
   // are still respected below for anyone already a known customer.
-  const { data: sessions, error } = await supabase
+  //
+  // Deliberately NOT filtering out sessions with an order_number here.
+  // The storefront creates the `orders` row (and the matching Razorpay
+  // order) as soon as checkout starts, before the customer has actually
+  // paid — so a session can have an order_number and still be a genuine
+  // abandoned cart if that order's payment never completed. The real
+  // "did they convert" signal is orders.payment_status === 'paid', checked
+  // below once we've loaded the linked orders. See conversation history
+  // (Eswar Reddy / Ashraf Mundackal orders, HOE-20260731-9T0CA /
+  // HOE-20260731-R00S7) — both had an order_number but Razorpay confirmed
+  // zero payment attempts, and both were wrongly skipped before this fix.
+  const { data: rawSessions, error } = await supabase
     .from("checkout_sessions")
-    .select("id, name, phone, cart_items, created_at, last_activity_at")
-    .is("order_number", null)
+    .select("id, name, phone, cart_items, created_at, last_activity_at, order_number")
     .is("abandoned_cart_notified_at", null)
     .not("phone", "is", null)
     .lte("created_at", cutoffRecent)
@@ -97,7 +107,36 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  if (!sessions || sessions.length === 0) {
+  if (!rawSessions || rawSessions.length === 0) {
+    return NextResponse.json({ checked: 0, sent: 0, skipped: 0, failed: 0 });
+  }
+
+  const orderNumbers = [
+    ...new Set(rawSessions.map((s: any) => s.order_number).filter(Boolean)),
+  ];
+
+  const paidOrderNumbers = new Set<string>();
+  if (orderNumbers.length) {
+    const { data: linkedOrders } = await supabase
+      .from("orders")
+      .select("order_number, payment_status")
+      .in("order_number", orderNumbers);
+
+    for (const o of linkedOrders || []) {
+      if (o.payment_status === "paid") {
+        paidOrderNumbers.add(o.order_number);
+      }
+    }
+  }
+
+  // A session only counts as "converted" (skip it) if it's tied to an
+  // order that actually got paid. No order_number at all, or an
+  // order_number whose order never got paid, both still count as abandoned.
+  const sessions = rawSessions.filter(
+    (s: any) => !s.order_number || !paidOrderNumbers.has(s.order_number)
+  );
+
+  if (sessions.length === 0) {
     return NextResponse.json({ checked: 0, sent: 0, skipped: 0, failed: 0 });
   }
 

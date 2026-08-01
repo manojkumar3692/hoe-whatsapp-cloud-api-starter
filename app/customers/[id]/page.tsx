@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Header from "../../components/Header";
 import { supabaseAdmin } from "../../../lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -66,14 +67,28 @@ export default async function CustomerDetailPage({
 
   return (
     <main style={{ padding: 24, background: "#fafafa", minHeight: "100vh" }}>
-      <nav style={{ marginBottom: 24 }}>
-        <Link href="/customers">← Customers</Link>{" | "}
-        <Link href={`/inbox/${customer.phone}`}>Open Chat</Link>{" | "}
-        <Link href="/orders">Orders</Link>
-      </nav>
+      <Header active="customers" back={{ href: "/customers", label: "Customers" }} />
 
-      <h1>{customer.name || "Unknown Customer"}</h1>
-      <p style={{ color: "#666" }}>{customer.phone}</p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h1 style={{ marginBottom: 4 }}>{customer.name || "Unknown Customer"}</h1>
+          <p style={{ color: "#666", margin: 0 }}>{customer.phone}</p>
+        </div>
+        <Link
+          href={`/inbox/${customer.phone}`}
+          style={{
+            padding: "9px 16px",
+            borderRadius: 8,
+            background: "#166534",
+            color: "#fff",
+            textDecoration: "none",
+            fontSize: 13,
+            fontWeight: 700,
+          }}
+        >
+          💬 Message on WhatsApp
+        </Link>
+      </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
         <Stat title="Health" value={healthBadge(customer)} />
