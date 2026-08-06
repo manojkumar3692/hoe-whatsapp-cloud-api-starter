@@ -8,8 +8,25 @@ import { getFirstCartItem, cartItemName } from "../../../../lib/cartItems";
 //    existing customers only get their order stats refreshed (name/city/etc
 //    are left alone so manual CRM edits never get overwritten).
 // 2. checkout_sessions — grouped by phone, insert-only. If the phone is
-//    already a customer (whether from before, or just added by the orders
-//    pass above), it's skipped entirely — no update, no overwrite.
+//    already a customer — whether from before, just added by the orders
+//    pass above, added by an *earlier* run of this same sync, or
+//    auto-created as a placeholder by the WhatsApp webhook on an inbound
+//    message — it's skipped entirely, no update, no overwrite.
+//
+// "Already a customer" has to be checked against ALL known phones up
+// front, from BOTH sources, in one query — not just phones that happen to
+// appear in `orders`. A customer who was added by a previous run of pass 2
+// (or by the inbound-message webhook) but never placed an order doesn't
+// show up in `orderPhones`, so a check scoped to orders-only would miss
+// them and try to insert them again every time their checkout_session row
+// is re-read — which throws
+// `duplicate key value violates unique constraint "customers_phone_key"`.
+// That was the actual bug behind that error; fixed by doing a single
+// existing-customer lookup across the union of both sources before either
+// pass decides what's "new". The inserts below also use upsert with
+// ignoreDuplicates as a belt-and-suspenders guard against any other
+// overlap (e.g. a customer row created by a concurrent webhook call while
+// this sync is running).
 
 type OrderRow = {
   customer_name: string | null;
@@ -66,6 +83,10 @@ export async function POST(req: NextRequest) {
 
     const supabase = supabaseAdmin();
 
+    // ------------------------------------------------------------------
+    // Load + aggregate both sources first, before touching `customers`.
+    // ------------------------------------------------------------------
+
     const { data: orders, error: ordersError } = await supabase
       .from("orders")
       .select(
@@ -112,95 +133,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const orderPhones = Array.from(byPhone.keys());
-
-    const { data: existingForOrders, error: existingOrdersError } =
-      orderPhones.length > 0
-        ? await supabase
-            .from("customers")
-            .select("id, phone, name")
-            .in("phone", orderPhones)
-        : { data: [], error: null };
-
-    if (existingOrdersError) {
-      throw existingOrdersError;
-    }
-
-    // Tracks every phone we know is already (or about to be) a customer,
-    // across both passes.
-    const knownPhones = new Set(
-      (existingForOrders || []).map((c: any) => c.phone)
-    );
-
-    const newRows: any[] = [];
-    const updates: { phone: string; payload: any }[] = [];
-
-    for (const agg of byPhone.values()) {
-      if (!knownPhones.has(agg.phone)) {
-        const lastOrderDate = agg.lastOrderDate
-          ? agg.lastOrderDate.slice(0, 10)
-          : null;
-
-        newRows.push({
-          name: agg.name,
-          phone: agg.phone,
-          email: agg.email,
-          city: agg.city,
-          product: agg.product,
-          source: "orders",
-          consent: true,
-          total_orders: agg.totalOrders,
-          lifetime_value_in_paise: agg.lifetimeValuePaise,
-          last_order_date: lastOrderDate,
-        });
-
-        knownPhones.add(agg.phone);
-      } else {
-        const existingCustomer = (existingForOrders || []).find(
-          (c: any) => c.phone === agg.phone
-        );
-        const lastOrderDate = agg.lastOrderDate
-          ? agg.lastOrderDate.slice(0, 10)
-          : null;
-
-        const payload: any = {
-          total_orders: agg.totalOrders,
-          lifetime_value_in_paise: agg.lifetimeValuePaise,
-          last_order_date: lastOrderDate,
-          updated_at: new Date().toISOString(),
-        };
-
-        // Only backfill name if the existing record is a placeholder
-        // (e.g. auto-created "Unknown" from an inbound WhatsApp message).
-        if (
-          existingCustomer &&
-          (!existingCustomer.name || existingCustomer.name === "Unknown")
-        ) {
-          payload.name = agg.name;
-        }
-
-        updates.push({ phone: agg.phone, payload });
-      }
-    }
-
-    if (newRows.length > 0) {
-      const { error: insertError } = await supabase
-        .from("customers")
-        .insert(newRows);
-
-      if (insertError) {
-        throw insertError;
-      }
-    }
-
-    for (const u of updates) {
-      await supabase.from("customers").update(u.payload).eq("phone", u.phone);
-    }
-
-    // ------------------------------------------------------------------
-    // Pass 2: checkout_sessions — insert-only, skip anyone already known
-    // ------------------------------------------------------------------
-
     const { data: sessions, error: sessionsError } = await supabase
       .from("checkout_sessions")
       .select("name, phone, email, city, cart_items, paid_at, created_at")
@@ -240,6 +172,112 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ------------------------------------------------------------------
+    // One comprehensive lookup of who's already a customer, across BOTH
+    // sources, before either pass decides what's "new". This is the fix —
+    // see the note at the top of the file.
+    // ------------------------------------------------------------------
+
+    const allPhones = Array.from(
+      new Set([...byPhone.keys(), ...sessionByPhone.keys()])
+    );
+
+    const { data: existingCustomers, error: existingError } =
+      allPhones.length > 0
+        ? await supabase
+            .from("customers")
+            .select("id, phone, name")
+            .in("phone", allPhones)
+        : { data: [], error: null };
+
+    if (existingError) {
+      throw existingError;
+    }
+
+    const existingByPhone = new Map(
+      (existingCustomers || []).map((c: any) => [c.phone, c])
+    );
+
+    // Tracks every phone we know is already (or about to be) a customer,
+    // across both passes.
+    const knownPhones = new Set(existingByPhone.keys());
+
+    // ------------------------------------------------------------------
+    // Pass 1: orders
+    // ------------------------------------------------------------------
+
+    const newRows: any[] = [];
+    const updates: { phone: string; payload: any }[] = [];
+
+    for (const agg of byPhone.values()) {
+      if (!knownPhones.has(agg.phone)) {
+        const lastOrderDate = agg.lastOrderDate
+          ? agg.lastOrderDate.slice(0, 10)
+          : null;
+
+        newRows.push({
+          name: agg.name,
+          phone: agg.phone,
+          email: agg.email,
+          city: agg.city,
+          product: agg.product,
+          source: "orders",
+          consent: true,
+          total_orders: agg.totalOrders,
+          lifetime_value_in_paise: agg.lifetimeValuePaise,
+          last_order_date: lastOrderDate,
+        });
+
+        knownPhones.add(agg.phone);
+      } else {
+        const existingCustomer = existingByPhone.get(agg.phone);
+        const lastOrderDate = agg.lastOrderDate
+          ? agg.lastOrderDate.slice(0, 10)
+          : null;
+
+        const payload: any = {
+          total_orders: agg.totalOrders,
+          lifetime_value_in_paise: agg.lifetimeValuePaise,
+          last_order_date: lastOrderDate,
+          updated_at: new Date().toISOString(),
+        };
+
+        // Only backfill name if the existing record is a placeholder
+        // (e.g. auto-created "Unknown" from an inbound WhatsApp message).
+        if (
+          existingCustomer &&
+          (!existingCustomer.name || existingCustomer.name === "Unknown")
+        ) {
+          payload.name = agg.name;
+        }
+
+        updates.push({ phone: agg.phone, payload });
+      }
+    }
+
+    if (newRows.length > 0) {
+      // upsert + ignoreDuplicates instead of a plain insert: even with the
+      // comprehensive lookup above, a row could theoretically be created by
+      // another request (e.g. the inbound-message webhook) in the moment
+      // between that lookup and this write. Skip-on-conflict means that
+      // race can't crash the whole sync.
+      const { error: insertError } = await supabase
+        .from("customers")
+        .upsert(newRows, { onConflict: "phone", ignoreDuplicates: true });
+
+      if (insertError) {
+        throw insertError;
+      }
+    }
+
+    for (const u of updates) {
+      await supabase.from("customers").update(u.payload).eq("phone", u.phone);
+    }
+
+    // ------------------------------------------------------------------
+    // Pass 2: checkout_sessions — insert-only, skip anyone already known
+    // ------------------------------------------------------------------
+
     const sessionRows: any[] = [];
 
     for (const agg of sessionByPhone.values()) {
@@ -262,7 +300,7 @@ export async function POST(req: NextRequest) {
     if (sessionRows.length > 0) {
       const { error: sessionInsertError } = await supabase
         .from("customers")
-        .insert(sessionRows);
+        .upsert(sessionRows, { onConflict: "phone", ignoreDuplicates: true });
 
       if (sessionInsertError) {
         throw sessionInsertError;
