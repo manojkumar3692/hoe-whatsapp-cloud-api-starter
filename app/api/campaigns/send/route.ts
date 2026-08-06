@@ -54,6 +54,12 @@ export async function POST(req: NextRequest) {
       allowedStatuses = ["ready", "warning"];
     } else if (sendMode === "everyone") {
       allowedStatuses = ["ready", "warning", "cooldown"];
+    } else if (sendMode === "everyone_including_already_sent") {
+      // Deliberately re-sends to people who already got this exact
+      // template before — normal "everyone" mode always excludes them as a
+      // spam safeguard, but sometimes a repeat send (a reminder, a
+      // recurring offer) is exactly what's wanted.
+      allowedStatuses = ["ready", "warning", "cooldown", "already_sent"];
     } else {
       allowedStatuses = ["ready"];
     }

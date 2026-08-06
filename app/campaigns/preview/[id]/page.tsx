@@ -167,7 +167,7 @@ export default async function CampaignPreviewPage({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
+          gridTemplateColumns: "repeat(4, 1fr)",
           gap: 16,
           marginBottom: 20,
         }}
@@ -193,7 +193,15 @@ export default async function CampaignPreviewPage({
           title="Send Everyone Anyway"
           mode="everyone"
           count={ready + warning + cooldown}
-          note="Includes cooldown customers. Use carefully."
+          note="Includes cooldown customers. Still skips anyone who already got this exact template before."
+        />
+
+        <SendBox
+          campaignId={id}
+          title="Resend to Full List"
+          mode="everyone_including_already_sent"
+          count={rows.length}
+          note="Includes everyone above, PLUS people who already received this template — use for a deliberate repeat send."
         />
       </div>
 
