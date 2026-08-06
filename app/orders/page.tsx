@@ -11,6 +11,16 @@ export const dynamic = "force-dynamic";
 
 const UNSHIPPED_STATUSES = ["pending", "confirmed", "packed"];
 
+// The storefront writes a row into `orders` the instant checkout starts
+// (as soon as the Razorpay order is created) — not after payment actually
+// succeeds. If the customer never completes payment, payment_status stays
+// one of these forever, and the "order" is really just an abandoned
+// checkout wearing an order_number. Nothing needs to be fulfilled until
+// payment_status flips to 'paid', so these are kept out of Needs Action
+// and shown in their own tab instead — see the "💳 Payment Pending" tab
+// below and lib/delhiverySync.ts-adjacent conversation history.
+const UNPAID_STATUSES = ["pending", "failed"];
+
 function formatINR(paise: number) {
   return `₹${((paise || 0) / 100).toLocaleString("en-IN", {
     maximumFractionDigits: 0,
@@ -242,6 +252,7 @@ export default async function OrdersPage({
   const supabase = supabaseAdmin();
 
   const isHiddenReview = params.show_hidden === "1";
+  const isPaymentPendingView = params.view === "payment_pending" && !isHiddenReview;
   const isAllView = params.view === "all" || isHiddenReview;
   // Only show the "All Orders"-only filter fields (Order Status, Coupon)
   // when actually in All Orders mode — in the hidden-orders review list
@@ -273,16 +284,26 @@ export default async function OrdersPage({
   // Tab badge counts — cheap, exact, independent of the 300-row cap below.
   // ------------------------------------------------------------------
 
-  const [{ count: needsActionCount }, { count: hiddenCount }, { count: visibleTotalCount }] =
-    await Promise.all([
-      supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .eq("is_hidden", false)
-        .in("shipping_status", UNSHIPPED_STATUSES),
-      supabase.from("orders").select("*", { count: "exact", head: true }).eq("is_hidden", true),
-      supabase.from("orders").select("*", { count: "exact", head: true }).eq("is_hidden", false),
-    ]);
+  const [
+    { count: needsActionCount },
+    { count: paymentPendingCount },
+    { count: hiddenCount },
+    { count: visibleTotalCount },
+  ] = await Promise.all([
+    supabase
+      .from("orders")
+      .select("*", { count: "exact", head: true })
+      .eq("is_hidden", false)
+      .eq("payment_status", "paid")
+      .in("shipping_status", UNSHIPPED_STATUSES),
+    supabase
+      .from("orders")
+      .select("*", { count: "exact", head: true })
+      .eq("is_hidden", false)
+      .in("payment_status", UNPAID_STATUSES),
+    supabase.from("orders").select("*", { count: "exact", head: true }).eq("is_hidden", true),
+    supabase.from("orders").select("*", { count: "exact", head: true }).eq("is_hidden", false),
+  ]);
 
   // ------------------------------------------------------------------
   // Stats row — always reflects real, non-hidden business activity,
@@ -338,12 +359,18 @@ export default async function OrdersPage({
   } else {
     query = query.eq("is_hidden", false);
 
-    if (isAllView) {
+    if (isPaymentPendingView) {
+      query = query.in("payment_status", UNPAID_STATUSES);
+    } else if (isAllView) {
       if (params.shipping) {
         query = query.eq("shipping_status", params.shipping);
       }
     } else {
-      query = query.in("shipping_status", UNSHIPPED_STATUSES);
+      // Needs Action = actually needs fulfillment work. Orders whose
+      // payment never completed aren't real sales yet — see
+      // UNPAID_STATUSES above — so they're excluded here and shown in the
+      // separate Payment Pending tab instead.
+      query = query.in("shipping_status", UNSHIPPED_STATUSES).eq("payment_status", "paid");
     }
   }
 
@@ -424,6 +451,8 @@ export default async function OrdersPage({
       <p style={{ color: "#666", marginBottom: 20 }}>
         {isHiddenReview
           ? "Orders marked as test/spam — hidden from the normal list, not deleted."
+          : isPaymentPendingView
+          ? "Checkout started but payment never completed — the storefront creates the order record as soon as checkout begins, before payment succeeds, so these aren't real sales yet. Nothing to fulfill until payment_status flips to paid; the abandoned-cart reminder job (if a matching checkout session exists) nudges the customer to finish paying."
           : "New orders land here first. Confirm, pack, and ship them, then they drop off this view automatically."}
       </p>
 
@@ -499,8 +528,17 @@ export default async function OrdersPage({
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
-        <Link href={tabHref({})} style={tabStyle(!isAllView && !isHiddenReview)}>
+        <Link
+          href={tabHref({})}
+          style={tabStyle(!isAllView && !isHiddenReview && !isPaymentPendingView)}
+        >
           🔔 Needs Action ({needsActionCount || 0})
+        </Link>
+        <Link
+          href={tabHref({ view: "payment_pending" })}
+          style={tabStyle(isPaymentPendingView, true)}
+        >
+          💳 Payment Pending ({paymentPendingCount || 0})
         </Link>
         <Link href={tabHref({ view: "all" })} style={tabStyle(isAllView && !isHiddenReview)}>
           All Orders ({visibleTotalCount || 0})
@@ -654,7 +692,7 @@ export default async function OrdersPage({
 
         {hasFilters && (
           <a
-            href={isAllView ? "/orders?view=all" : "/orders"}
+            href={isAllView ? "/orders?view=all" : isPaymentPendingView ? "/orders?view=payment_pending" : "/orders"}
             style={{
               padding: "11px 18px",
               borderRadius: 8,
@@ -779,12 +817,14 @@ export default async function OrdersPage({
 
               {orders.length === 0 && (
                 <tr>
-                  <td style={td} colSpan={8}>
+                  <td style={td} colSpan={9}>
                     {isHiddenReview
                       ? "No test/hidden orders."
+                      : isPaymentPendingView
+                      ? "No unpaid orders right now — everything here has either completed payment or hasn't been created yet."
                       : isAllView
                       ? "No orders found."
-                      : "Nothing needs action right now — every order has moved past pending/confirmed/packed. Check \"All Orders\" to see everything."}
+                      : "Nothing needs action right now — every paid order has moved past pending/confirmed/packed. Check \"All Orders\" to see everything, or \"Payment Pending\" for checkouts that never completed."}
                   </td>
                 </tr>
               )}
