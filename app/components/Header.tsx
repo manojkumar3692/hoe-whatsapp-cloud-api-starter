@@ -83,29 +83,50 @@ export default function Header({
           </div>
         </Link>
 
-        <nav style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-          {NAV_ITEMS.map((item) => {
-            const isActive = item.key === active;
-            return (
-              <Link
-                key={item.key}
-                href={item.href}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 999,
-                  fontSize: 13,
-                  fontWeight: isActive ? 700 : 500,
-                  textDecoration: "none",
-                  background: isActive ? "#1c1712" : "transparent",
-                  color: isActive ? "#fff" : "#544c42",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <nav style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {NAV_ITEMS.map((item) => {
+              const isActive = item.key === active;
+              return (
+                <Link
+                  key={item.key}
+                  href={item.href}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 999,
+                    fontSize: 13,
+                    fontWeight: isActive ? 700 : 500,
+                    textDecoration: "none",
+                    background: isActive ? "#1c1712" : "transparent",
+                    color: isActive ? "#fff" : "#544c42",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+
+          <form action="/api/auth/logout" method="POST">
+            <button
+              type="submit"
+              style={{
+                padding: "8px 14px",
+                borderRadius: 999,
+                fontSize: 13,
+                fontWeight: 600,
+                border: "1px solid #eadfce",
+                background: "transparent",
+                color: "#9a8f80",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Logout
+            </button>
+          </form>
+        </div>
       </div>
 
       {back && (
