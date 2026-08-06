@@ -3,6 +3,7 @@ import Header from "../../components/Header";
 import { supabaseAdmin } from "../../../lib/supabaseAdmin";
 import { parseCartItems, cartItemName } from "../../../lib/cartItems";
 import { normalizePhone } from "../../../lib/phone";
+import { isDelhiverySyncDue, syncOrderDelhiveryStatus } from "../../../lib/delhiverySync";
 
 export const dynamic = "force-dynamic";
 
@@ -97,6 +98,22 @@ export default async function OrderDetailPage({
     );
   }
 
+  // Auto-refresh from Delhivery on page load — throttled to once every few
+  // minutes per order (see isDelhiverySyncDue) so opening/reloading the
+  // page doesn't hammer their API or slow the page down every time. The
+  // manual "Sync Now" button below always forces an immediate check
+  // regardless of this throttle.
+  if (isDelhiverySyncDue(order)) {
+    const syncResult = await syncOrderDelhiveryStatus(order.id);
+    if (syncResult.synced) {
+      order.delhivery_last_status_raw = syncResult.rawStatus ?? order.delhivery_last_status_raw;
+      order.delhivery_last_synced_at = syncResult.syncedAt ?? order.delhivery_last_synced_at;
+      if (syncResult.statusChanged && syncResult.newStatus) {
+        order.shipping_status = syncResult.newStatus;
+      }
+    }
+  }
+
   const items = parseCartItems(order.items);
   const whatsappPhone = normalizePhone(order.customer_phone || "");
   const isPartialCod = order.payment_type === "partial_cod";
@@ -125,6 +142,53 @@ export default async function OrderDetailPage({
           {isPartialCod && order.cod_balance_status === "pending" && (
             <StatusBadge value="cod balance pending" />
           )}
+          {order.delhivery_waybill && (
+            <span
+              title="Delivery Status — as reported by Delhivery, read-only"
+              style={{
+                background: "#f3f4f6",
+                color: "#374151",
+                padding: "6px 12px",
+                borderRadius: 999,
+                fontSize: 13,
+                fontWeight: 700,
+                border: "1px dashed #d1d5db",
+              }}
+            >
+              🚚 {order.delhivery_last_status_raw || "Not synced yet"}
+            </span>
+          )}
+          {!order.delhivery_waybill &&
+            ["shipped", "out_for_delivery", "delivered", "completed"].includes(order.shipping_status) && (
+              <span
+                title="Order Status says this shipped, but no Delhivery waybill was ever attached — that status was set manually and isn't confirmed by Delhivery. Add the AWB number below to start tracking it for real."
+                style={{
+                  background: "#fef3c7",
+                  color: "#92400e",
+                  padding: "6px 12px",
+                  borderRadius: 999,
+                  fontSize: 13,
+                  fontWeight: 700,
+                }}
+              >
+                ⚠️ No tracking attached
+              </span>
+            )}
+          <a
+            href={`/api/orders/${order.id}/invoice`}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 8,
+              border: "1px solid #ddd",
+              background: "#fff",
+              color: "#111",
+              textDecoration: "none",
+              fontSize: 13,
+              fontWeight: 700,
+            }}
+          >
+            📄 Download Invoice
+          </a>
         </div>
       </div>
 
@@ -220,7 +284,13 @@ export default async function OrderDetailPage({
 
       <section style={{ ...card, marginTop: 16 }}>
         <h2>Shipping</h2>
-        <Info label="Order Status" value={<StatusBadge value={order.shipping_status} />} />
+        <Info label="Order Status (admin-controlled)" value={<StatusBadge value={order.shipping_status} />} />
+        <div style={{ fontSize: 12, color: "#999", marginTop: -8, marginBottom: 12 }}>
+          This is your own fulfillment stage — it defaults to pending and only moves forward
+          automatically as Delhivery confirms progress. If you set it to cancelled (or
+          returned/refunded/rejected), it stays that way permanently — future Delhivery syncs
+          will never overwrite it. See "Delivery Status" below for Delhivery's own live status.
+        </div>
         <Info
           label="Tracking URL"
           value={
@@ -234,6 +304,98 @@ export default async function OrderDetailPage({
           }
         />
         <Info label="Notes" value={order.notes || "-"} />
+      </section>
+
+      <section style={{ ...card, marginTop: 16 }}>
+        <h2>Delivery Status (as per Delhivery)</h2>
+        <div style={{ fontSize: 12, color: "#999", marginTop: -6, marginBottom: 14 }}>
+          Read-only — always reflects Delhivery's own tracking, even if it disagrees with the
+          Order Status above (e.g. an order you cancelled but the courier still shows moving).
+        </div>
+
+        <form action="/api/orders/set-waybill" method="POST" style={{ marginBottom: 16 }}>
+          <input type="hidden" name="id" value={order.id} />
+          <label style={{ fontSize: 12, color: "#777" }}>Waybill / AWB Number</label>
+          <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+            <input
+              name="delhivery_waybill"
+              defaultValue={order.delhivery_waybill || ""}
+              placeholder="e.g. 12345678901"
+              style={{ ...input, marginTop: 0, flex: 1 }}
+            />
+            <input
+              name="admin_password"
+              type="password"
+              placeholder="Admin password"
+              required
+              style={{ ...input, marginTop: 0, width: 160 }}
+            />
+            <button
+              type="submit"
+              style={{
+                padding: "10px 16px",
+                borderRadius: 8,
+                border: 0,
+                background: "#111",
+                color: "#fff",
+                fontWeight: 700,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Save
+            </button>
+          </div>
+          <div style={{ fontSize: 12, color: "#999", marginTop: 4 }}>
+            Paste the AWB number after creating the shipment in Delhivery One. Once saved, this
+            page checks Delhivery automatically whenever it loads (at most once every few minutes) —
+            use Sync Now below to force an immediate check instead of waiting.
+          </div>
+        </form>
+
+        {order.delhivery_waybill && (
+          <>
+            <Info
+              label="Delivery Status"
+              value={order.delhivery_last_status_raw || "Not synced yet"}
+            />
+            <Info
+              label="Last Synced At"
+              value={
+                order.delhivery_last_synced_at
+                  ? new Date(order.delhivery_last_synced_at).toLocaleString()
+                  : "-"
+              }
+            />
+
+            <form action={`/api/orders/${order.id}/sync-delhivery`} method="POST">
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+                <input
+                  name="admin_password"
+                  type="password"
+                  placeholder="Admin password"
+                  required
+                  style={{ ...input, marginTop: 0, width: 160 }}
+                />
+                <button
+                  type="submit"
+                  style={{
+                    padding: "10px 16px",
+                    borderRadius: 8,
+                    border: "1px solid #ddd",
+                    background: "#fff",
+                    color: "#111",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  🔄 Sync Now
+                </button>
+              </div>
+            </form>
+          </>
+        )}
       </section>
 
       <section style={{ ...card, marginTop: 16 }}>
