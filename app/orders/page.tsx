@@ -300,7 +300,8 @@ export default async function OrdersPage({
       .from("orders")
       .select("*", { count: "exact", head: true })
       .eq("is_hidden", false)
-      .in("payment_status", UNPAID_STATUSES),
+      .in("payment_status", UNPAID_STATUSES)
+      .in("shipping_status", UNSHIPPED_STATUSES),
     supabase.from("orders").select("*", { count: "exact", head: true }).eq("is_hidden", true),
     supabase.from("orders").select("*", { count: "exact", head: true }).eq("is_hidden", false),
   ]);
@@ -360,7 +361,13 @@ export default async function OrdersPage({
     query = query.eq("is_hidden", false);
 
     if (isPaymentPendingView) {
-      query = query.in("payment_status", UNPAID_STATUSES);
+      // Only orders that are BOTH unpaid AND still unshipped — if fulfillment
+      // already moved past packed (shipped/delivered/etc.), payment was
+      // confirmed some other way even though our payment_status field never
+      // got updated (the storefront's payment callback is browser-only, not
+      // a server webhook — see conversation history). That's a stale field
+      // to go fix, not a live abandoned checkout to chase down.
+      query = query.in("payment_status", UNPAID_STATUSES).in("shipping_status", UNSHIPPED_STATUSES);
     } else if (isAllView) {
       if (params.shipping) {
         query = query.eq("shipping_status", params.shipping);
@@ -452,7 +459,7 @@ export default async function OrdersPage({
         {isHiddenReview
           ? "Orders marked as test/spam — hidden from the normal list, not deleted."
           : isPaymentPendingView
-          ? "Checkout started but payment never completed — the storefront creates the order record as soon as checkout begins, before payment succeeds, so these aren't real sales yet. Nothing to fulfill until payment_status flips to paid; the abandoned-cart reminder job (if a matching checkout session exists) nudges the customer to finish paying."
+          ? "Checkout started but payment never completed, and nothing has shipped yet — the storefront creates the order record as soon as checkout begins, before payment succeeds, so these aren't confirmed sales. The abandoned-cart reminder job (if a matching checkout session exists) nudges the customer to finish paying. Note: if an order somehow already shipped/delivered despite showing pending here, payment was confirmed some other way and payment_status is just stale — fix it via Update Order rather than treating it as abandoned."
           : "New orders land here first. Confirm, pack, and ship them, then they drop off this view automatically."}
       </p>
 
