@@ -1,16 +1,11 @@
 import { supabaseAdmin } from "./supabaseAdmin";
 import { trackWaybills, trackByReferenceNumbersRaw, mapDelhiveryStatus, DelhiveryShipment } from "./delhivery";
+import { ORDER_STATUS_ADMIN_LOCKED, SYNC_TERMINAL_STATUSES, shouldAdvanceOrderStatus } from "./orderStatusSync";
 
 // Once an order reaches one of these, there's nothing left to track —
-// don't keep spending API calls checking on it.
-export const DELHIVERY_TERMINAL_STATUSES = [
-  "delivered",
-  "completed",
-  "cancelled",
-  "returned",
-  "refunded",
-  "rejected",
-];
+// don't keep spending API calls checking on it. (Shared across couriers —
+// see lib/orderStatusSync.ts.)
+export const DELHIVERY_TERMINAL_STATUSES = SYNC_TERMINAL_STATUSES;
 
 // How long a synced status is considered fresh enough that loading the
 // order page again won't trigger another Delhivery call. Keeps repeated
@@ -40,43 +35,6 @@ export type DelhiverySyncResult = {
   syncedAt?: string;
   error?: string;
 };
-
-// "Order Status" (shipping_status) is an admin-owned decision — Delhivery
-// sync should only ever move it FORWARD along the normal fulfillment path,
-// and should never touch it once it's in one of these locked/terminal
-// states. If you cancel an order, it stays cancelled no matter what
-// Delhivery reports afterwards. "Delivery Status" (delhivery_last_status_raw)
-// is the separate, always-updated, read-only field that mirrors Delhivery's
-// own reporting regardless of what Order Status says — see
-// shouldAdvanceOrderStatus below.
-const ORDER_STATUS_FORWARD_SEQUENCE = [
-  "pending",
-  "confirmed",
-  "packed",
-  "shipped",
-  "out_for_delivery",
-  "delivered",
-  "completed",
-];
-
-const ORDER_STATUS_ADMIN_LOCKED = ["cancelled", "returned", "refunded", "rejected"];
-
-function shouldAdvanceOrderStatus(currentStatus: string, mappedStatus: string): boolean {
-  // Once an admin has made a final call (cancelled, refunded, etc.), a
-  // Delhivery sync should never overwrite it — it only keeps updating the
-  // separate Delivery Status field from here on.
-  if (ORDER_STATUS_ADMIN_LOCKED.includes(currentStatus)) return false;
-
-  // A real-world RTO or lost-package report from Delhivery is worth acting
-  // on even though it isn't "forward" progress in the happy-path sequence.
-  if (mappedStatus === "returned" || mappedStatus === "cancelled") return true;
-
-  const currentIndex = ORDER_STATUS_FORWARD_SEQUENCE.indexOf(currentStatus);
-  const mappedIndex = ORDER_STATUS_FORWARD_SEQUENCE.indexOf(mappedStatus);
-  if (mappedIndex === -1) return false; // unrecognized target, don't touch
-
-  return mappedIndex > currentIndex;
-}
 
 // Shared apply-step: given a shipment record from Delhivery (found either
 // by waybill or by reference number) and the order it belongs to, updates

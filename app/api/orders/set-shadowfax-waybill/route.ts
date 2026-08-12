@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 
-// Saves the Delhivery AWB/waybill number against an order — entered
-// manually after creating the shipment in Delhivery One. Once set, the
-// order page can pull live status against it via /sync-delhivery.
+// Saves the Shadowfax AWB number against an order — entered manually
+// after creating the shipment with Shadowfax. Once set, the order page
+// can pull live status against it via /sync-shadowfax.
 export async function POST(req: NextRequest) {
   try {
     const form = await req.formData();
@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     }
 
     const id = String(form.get("id") || "");
-    const waybill = String(form.get("delhivery_waybill") || "").trim();
+    const waybill = String(form.get("shadowfax_waybill") || "").trim();
 
     if (!id) {
       return NextResponse.json({ error: "Order ID required" }, { status: 400 });
@@ -23,14 +23,14 @@ export async function POST(req: NextRequest) {
 
     const { data: existing } = await supabase
       .from("orders")
-      .select("delhivery_waybill")
+      .select("shadowfax_waybill")
       .eq("id", id)
       .maybeSingle();
 
-    const waybillChanged = (existing?.delhivery_waybill || "") !== waybill;
+    const waybillChanged = (existing?.shadowfax_waybill || "") !== waybill;
 
     const updatePayload: any = {
-      delhivery_waybill: waybill || null,
+      shadowfax_waybill: waybill || null,
       updated_at: new Date().toISOString(),
     };
 
@@ -40,8 +40,8 @@ export async function POST(req: NextRequest) {
     // undo any Order Status change a bad sync may have already caused —
     // that still needs a manual fix via the Update Order form below.
     if (waybillChanged) {
-      updatePayload.delhivery_last_status_raw = null;
-      updatePayload.delhivery_last_synced_at = null;
+      updatePayload.shadowfax_last_status_raw = null;
+      updatePayload.shadowfax_last_synced_at = null;
     }
 
     const { error } = await supabase.from("orders").update(updatePayload).eq("id", id);
@@ -55,8 +55,8 @@ export async function POST(req: NextRequest) {
         order_id: id,
         status: "waybill_updated",
         note: waybill
-          ? `Delhivery waybill set to ${waybill}${existing?.delhivery_waybill ? ` (was ${existing.delhivery_waybill})` : ""}`
-          : `Delhivery waybill cleared (was ${existing?.delhivery_waybill})`,
+          ? `Shadowfax waybill set to ${waybill}${existing?.shadowfax_waybill ? ` (was ${existing.shadowfax_waybill})` : ""}`
+          : `Shadowfax waybill cleared (was ${existing?.shadowfax_waybill})`,
       });
     }
 
