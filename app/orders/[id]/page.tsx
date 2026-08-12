@@ -4,6 +4,7 @@ import { supabaseAdmin } from "../../../lib/supabaseAdmin";
 import { parseCartItems, cartItemName } from "../../../lib/cartItems";
 import { normalizePhone } from "../../../lib/phone";
 import { isDelhiverySyncDue, syncOrderDelhiveryStatus } from "../../../lib/delhiverySync";
+import { isShadowfaxSyncDue, syncOrderShadowfaxStatus } from "../../../lib/shadowfaxSync";
 
 export const dynamic = "force-dynamic";
 
@@ -114,6 +115,18 @@ export default async function OrderDetailPage({
     }
   }
 
+  // Same auto-refresh pattern, for orders shipped via Shadowfax instead.
+  if (isShadowfaxSyncDue(order)) {
+    const sfxResult = await syncOrderShadowfaxStatus(order.id);
+    if (sfxResult.synced) {
+      order.shadowfax_last_status_raw = sfxResult.rawStatus ?? order.shadowfax_last_status_raw;
+      order.shadowfax_last_synced_at = sfxResult.syncedAt ?? order.shadowfax_last_synced_at;
+      if (sfxResult.statusChanged && sfxResult.newStatus) {
+        order.shipping_status = sfxResult.newStatus;
+      }
+    }
+  }
+
   const items = parseCartItems(order.items);
   const whatsappPhone = normalizePhone(order.customer_phone || "");
   const isPartialCod = order.payment_type === "partial_cod";
@@ -158,10 +171,27 @@ export default async function OrderDetailPage({
               🚚 {order.delhivery_last_status_raw || "Not synced yet"}
             </span>
           )}
+          {order.shadowfax_waybill && (
+            <span
+              title="Delivery Status — as reported by Shadowfax, read-only"
+              style={{
+                background: "#f3f4f6",
+                color: "#374151",
+                padding: "6px 12px",
+                borderRadius: 999,
+                fontSize: 13,
+                fontWeight: 700,
+                border: "1px dashed #d1d5db",
+              }}
+            >
+              📦 {order.shadowfax_last_status_raw || "Not synced yet"}
+            </span>
+          )}
           {!order.delhivery_waybill &&
+            !order.shadowfax_waybill &&
             ["shipped", "out_for_delivery", "delivered", "completed"].includes(order.shipping_status) && (
               <span
-                title="Order Status says this shipped, but no Delhivery waybill was ever attached — that status was set manually and isn't confirmed by Delhivery. Add the AWB number below to start tracking it for real."
+                title="Order Status says this shipped, but no courier waybill (Delhivery or Shadowfax) was ever attached — that status was set manually and isn't confirmed by either courier. Add an AWB number below to start tracking it for real."
                 style={{
                   background: "#fef3c7",
                   color: "#92400e",
@@ -287,9 +317,10 @@ export default async function OrderDetailPage({
         <Info label="Order Status (admin-controlled)" value={<StatusBadge value={order.shipping_status} />} />
         <div style={{ fontSize: 12, color: "#999", marginTop: -8, marginBottom: 12 }}>
           This is your own fulfillment stage — it defaults to pending and only moves forward
-          automatically as Delhivery confirms progress. If you set it to cancelled (or
-          returned/refunded/rejected), it stays that way permanently — future Delhivery syncs
-          will never overwrite it. See "Delivery Status" below for Delhivery's own live status.
+          automatically as Delhivery or Shadowfax confirms progress. If you set it to cancelled
+          (or returned/refunded/rejected), it stays that way permanently — future courier syncs
+          will never overwrite it. See the Delivery Status sections below for each courier's own
+          live status.
         </div>
         <Info
           label="Tracking URL"
@@ -369,6 +400,101 @@ export default async function OrderDetailPage({
             />
 
             <form action={`/api/orders/${order.id}/sync-delhivery`} method="POST">
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+                <input
+                  name="admin_password"
+                  type="password"
+                  placeholder="Admin password"
+                  required
+                  style={{ ...input, marginTop: 0, width: 160 }}
+                />
+                <button
+                  type="submit"
+                  style={{
+                    padding: "10px 16px",
+                    borderRadius: 8,
+                    border: "1px solid #ddd",
+                    background: "#fff",
+                    color: "#111",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  🔄 Sync Now
+                </button>
+              </div>
+            </form>
+          </>
+        )}
+      </section>
+
+      <section style={{ ...card, marginTop: 16 }}>
+        <h2>Delivery Status (as per Shadowfax)</h2>
+        <div style={{ fontSize: 12, color: "#999", marginTop: -6, marginBottom: 14 }}>
+          Read-only — always reflects Shadowfax's own tracking, even if it disagrees with the
+          Order Status above. Use this section instead of Delhivery's above if this order shipped
+          via Shadowfax.
+        </div>
+
+        <form action="/api/orders/set-shadowfax-waybill" method="POST" style={{ marginBottom: 16 }}>
+          <input type="hidden" name="id" value={order.id} />
+          <label style={{ fontSize: 12, color: "#777" }}>Waybill / AWB Number</label>
+          <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+            <input
+              name="shadowfax_waybill"
+              defaultValue={order.shadowfax_waybill || ""}
+              placeholder="e.g. SF1234567890TES"
+              style={{ ...input, marginTop: 0, flex: 1 }}
+            />
+            <input
+              name="admin_password"
+              type="password"
+              placeholder="Admin password"
+              required
+              style={{ ...input, marginTop: 0, width: 160 }}
+            />
+            <button
+              type="submit"
+              style={{
+                padding: "10px 16px",
+                borderRadius: 8,
+                border: 0,
+                background: "#111",
+                color: "#fff",
+                fontWeight: 700,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Save
+            </button>
+          </div>
+          <div style={{ fontSize: 12, color: "#999", marginTop: 4 }}>
+            Paste the AWB number after creating the shipment with Shadowfax. Once saved, this page
+            checks Shadowfax automatically whenever it loads (at most once every few minutes) — use
+            Sync Now below to force an immediate check instead of waiting. Note: unlike Delhivery,
+            Shadowfax's tracking API can't be matched in bulk by order number — the AWB has to be
+            entered here manually per order.
+          </div>
+        </form>
+
+        {order.shadowfax_waybill && (
+          <>
+            <Info
+              label="Delivery Status"
+              value={order.shadowfax_last_status_raw || "Not synced yet"}
+            />
+            <Info
+              label="Last Synced At"
+              value={
+                order.shadowfax_last_synced_at
+                  ? new Date(order.shadowfax_last_synced_at).toLocaleString()
+                  : "-"
+              }
+            />
+
+            <form action={`/api/orders/${order.id}/sync-shadowfax`} method="POST">
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
                 <input
                   name="admin_password"

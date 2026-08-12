@@ -86,38 +86,11 @@ function paymentTypeTag(paymentType: string) {
 }
 
 // Order Status values from "shipped" onward that really ought to have a
-// Delhivery waybill attached by now — if one isn't, that Order Status was
-// set manually and was never actually confirmed against Delhivery.
+// courier waybill attached by now — if one isn't, that Order Status was
+// set manually and was never actually confirmed by either courier.
 const STATUSES_EXPECTING_TRACKING = ["shipped", "out_for_delivery", "delivered", "completed"];
 
-// Delivery Status is Delhivery's own reported status — read-only here, kept
-// deliberately separate from the admin-editable Order Status column so an
-// automatic sync can never look like (or actually be) an admin decision.
-function deliveryStatusCell(order: any) {
-  if (!order.delhivery_waybill) {
-    if (STATUSES_EXPECTING_TRACKING.includes(order.shipping_status)) {
-      return (
-        <span
-          title="Order Status says this shipped, but no Delhivery waybill was ever attached — that status was set manually and isn't confirmed by Delhivery."
-          style={{
-            background: "#fef3c7",
-            color: "#92400e",
-            padding: "5px 10px",
-            borderRadius: 999,
-            fontSize: 12,
-            fontWeight: 700,
-            whiteSpace: "nowrap",
-          }}
-        >
-          ⚠️ No tracking
-        </span>
-      );
-    }
-    return <span style={{ color: "#bbb", fontSize: 13 }}>Not shipped</span>;
-  }
-  if (!order.delhivery_last_status_raw) {
-    return <span style={{ color: "#999", fontSize: 13 }}>Not synced yet</span>;
-  }
+function courierStatusBadge(icon: string, rawStatus: string | null, syncedAt: string | null) {
   return (
     <div>
       <span
@@ -131,15 +104,48 @@ function deliveryStatusCell(order: any) {
           whiteSpace: "nowrap",
         }}
       >
-        {order.delhivery_last_status_raw}
+        {icon} {rawStatus || "Not synced yet"}
       </span>
-      {order.delhivery_last_synced_at && (
+      {syncedAt && (
         <div style={{ fontSize: 11, color: "#aaa", marginTop: 3 }}>
-          synced {new Date(order.delhivery_last_synced_at).toLocaleString()}
+          synced {new Date(syncedAt).toLocaleString()}
         </div>
       )}
     </div>
   );
+}
+
+// Delivery Status is whichever courier's own reported status — read-only
+// here, kept deliberately separate from the admin-editable Order Status
+// column so an automatic sync can never look like (or actually be) an
+// admin decision. An order ships via ONE courier or the other, so this
+// just shows whichever waybill is actually attached.
+function deliveryStatusCell(order: any) {
+  if (order.delhivery_waybill) {
+    return courierStatusBadge("🚚", order.delhivery_last_status_raw, order.delhivery_last_synced_at);
+  }
+  if (order.shadowfax_waybill) {
+    return courierStatusBadge("📦", order.shadowfax_last_status_raw, order.shadowfax_last_synced_at);
+  }
+  if (STATUSES_EXPECTING_TRACKING.includes(order.shipping_status)) {
+    return (
+      <span
+        title="Order Status says this shipped, but no courier waybill (Delhivery or Shadowfax) was ever attached — that status was set manually and isn't confirmed by either courier."
+        style={{
+          background: "#fef3c7",
+          color: "#92400e",
+          padding: "5px 10px",
+          borderRadius: 999,
+          fontSize: 12,
+          fontWeight: 700,
+          whiteSpace: "nowrap",
+        }}
+      >
+        ⚠️ No tracking
+      </span>
+    );
+  }
+  return <span style={{ color: "#bbb", fontSize: 13 }}>Not shipped</span>;
 }
 
 const AVATAR_COLORS = ["#2563eb", "#7c3aed", "#db2777", "#dc2626", "#d97706", "#059669", "#0891b2"];
