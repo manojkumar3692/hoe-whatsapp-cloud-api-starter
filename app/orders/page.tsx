@@ -6,6 +6,7 @@ import HideOrderToggle from "../components/HideOrderToggle";
 import { supabaseAdmin } from "../../lib/supabaseAdmin";
 import { parseCartItems, cartItemName } from "../../lib/cartItems";
 import { normalizePhone } from "../../lib/phone";
+import styles from "./orders.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -214,6 +215,32 @@ function getStartDate(range?: string) {
   return null;
 }
 
+function parseDateBoundary(value: string | undefined, endOfDay = false) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  if (endOfDay) date.setDate(date.getDate() + 1);
+  return date.toISOString();
+}
+
+function formatDateRange(from?: string, to?: string, preset?: string) {
+  if (from || to) {
+    const format = (value: string) =>
+      new Date(`${value}T00:00:00`).toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+    if (from && to) return `${format(from)} – ${format(to)}`;
+    if (from) return `From ${format(from)}`;
+    if (to) return `Until ${format(to)}`;
+  }
+  if (preset === "today") return "Today";
+  if (preset === "7days") return "Last 7 days";
+  if (preset === "month") return "This month";
+  return "All dates";
+}
+
 function Stat({ title, value, accent }: { title: string; value: any; accent: string }) {
   return (
     <div
@@ -240,6 +267,8 @@ export default async function OrdersPage({
     shipping?: string;
     payment_type?: string;
     date?: string;
+    date_from?: string;
+    date_to?: string;
     coupon?: string;
     view?: string;
     show_hidden?: string;
@@ -399,23 +428,21 @@ export default async function OrdersPage({
     query = query.eq("coupon_code", params.coupon);
   }
 
-  const startDate = getStartDate(params.date);
-  if (startDate) {
-    query = query.gte("created_at", startDate);
+  const startDate = parseDateBoundary(params.date_from) || getStartDate(params.date);
+  const endDate = parseDateBoundary(params.date_to, true);
+  if (startDate) query = query.gte("created_at", startDate);
+  if (endDate) query = query.lt("created_at", endDate);
+
+  if (params.q?.trim()) {
+    const search = params.q.trim().replace(/[,%()]/g, " ");
+    query = query.or(
+      `order_number.ilike.%${search}%,customer_name.ilike.%${search}%,customer_phone.ilike.%${search}%,customer_email.ilike.%${search}%,customer_city.ilike.%${search}%`
+    );
   }
 
   const { data: rawOrders, error } = await query;
 
-  let orders = rawOrders || [];
-
-  if (params.q) {
-    const q = params.q.toLowerCase();
-    orders = orders.filter((o: any) =>
-      [o.order_number, o.customer_name, o.customer_phone, o.customer_email, o.customer_city]
-        .filter(Boolean)
-        .some((v) => String(v).toLowerCase().includes(q))
-    );
-  }
+  const orders = rawOrders || [];
 
   if (error) {
     return (
@@ -426,6 +453,21 @@ export default async function OrdersPage({
     );
   }
 
+  // Count confirmed purchases by normalized phone number. This stays current
+  // even if the separate customer-summary sync has not run yet, and avoids
+  // treating abandoned/failed checkouts as repeat purchases.
+  const customerOrderCounts = new Map<string, number>();
+  const { data: paidOrderCustomers } = await supabase
+    .from("orders")
+    .select("customer_phone")
+    .eq("payment_status", "paid")
+    .limit(5000);
+
+  for (const paidOrder of paidOrderCustomers || []) {
+    const phone = normalizePhone(paidOrder.customer_phone || "");
+    if (phone) customerOrderCounts.set(phone, (customerOrderCounts.get(phone) || 0) + 1);
+  }
+
   const coupons = [...new Set((rawOrders || []).map((o: any) => o.coupon_code).filter(Boolean))];
 
   const hasFilters = !!(
@@ -434,6 +476,8 @@ export default async function OrdersPage({
     params.shipping ||
     params.payment_type ||
     params.date ||
+    params.date_from ||
+    params.date_to ||
     params.coupon
   );
 
@@ -443,6 +487,8 @@ export default async function OrdersPage({
     if (params.payment) qs.set("payment", params.payment);
     if (params.payment_type) qs.set("payment_type", params.payment_type);
     if (params.date) qs.set("date", params.date);
+    if (params.date_from) qs.set("date_from", params.date_from);
+    if (params.date_to) qs.set("date_to", params.date_to);
     if (params.coupon) qs.set("coupon", params.coupon);
     if (next.view) qs.set("view", next.view);
     if (next.show_hidden) qs.set("show_hidden", next.show_hidden);
@@ -450,24 +496,50 @@ export default async function OrdersPage({
     return s ? `/orders?${s}` : "/orders";
   }
 
-  return (
-    <main style={{ padding: 24, background: "#fafafa", minHeight: "100vh" }}>
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `.order-row:hover { background: #fafafa; }`,
-        }}
-      />
+  function quickRangeHref(date: string) {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set("q", params.q);
+    if (params.payment) qs.set("payment", params.payment);
+    if (params.shipping) qs.set("shipping", params.shipping);
+    if (params.payment_type) qs.set("payment_type", params.payment_type);
+    if (params.coupon) qs.set("coupon", params.coupon);
+    if (params.view) qs.set("view", params.view);
+    if (params.show_hidden) qs.set("show_hidden", params.show_hidden);
+    qs.set("date", date);
+    return `/orders?${qs.toString()}`;
+  }
 
+  const clearHref = isHiddenReview
+    ? "/orders?show_hidden=1"
+    : isAllView
+    ? "/orders?view=all"
+    : isPaymentPendingView
+    ? "/orders?view=payment_pending"
+    : "/orders";
+
+  const viewDescription = isHiddenReview
+    ? "Test and spam records kept out of the live workflow."
+    : isPaymentPendingView
+    ? "Unpaid checkouts that have not entered fulfillment."
+    : isAllView
+    ? "Search and audit the complete order history."
+    : "Paid orders waiting to be confirmed, packed, or shipped.";
+
+  return (
+    <main className={styles.page}>
       <Header active="orders" />
 
-      <h1 style={{ marginBottom: 4 }}>Orders</h1>
-      <p style={{ color: "#666", marginBottom: 20 }}>
-        {isHiddenReview
-          ? "Orders marked as test/spam — hidden from the normal list, not deleted."
-          : isPaymentPendingView
-          ? "Checkout started but payment never completed, and nothing has shipped yet — the storefront creates the order record as soon as checkout begins, before payment succeeds, so these aren't confirmed sales. The abandoned-cart reminder job (if a matching checkout session exists) nudges the customer to finish paying. Note: if an order somehow already shipped/delivered despite showing pending here, payment was confirmed some other way and payment_status is just stale — fix it via Update Order rather than treating it as abandoned."
-          : "New orders land here first. Confirm, pack, and ship them, then they drop off this view automatically."}
-      </p>
+      <section className={styles.pageHeader}>
+        <div>
+          <p className={styles.eyebrow}>Operations desk</p>
+          <h1>Orders</h1>
+          <p>{viewDescription}</p>
+        </div>
+        <div className={styles.summary}>
+          <strong>{visibleTotalCount || 0}</strong>
+          active order records
+        </div>
+      </section>
 
       {params.bulk_sync === "1" && (
         <div
@@ -520,14 +592,7 @@ export default async function OrdersPage({
         </div>
       )}
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(6, 1fr)",
-          gap: 16,
-          marginBottom: 20,
-        }}
-      >
+      <div className={styles.stats}>
         <Stat title="Today's Revenue" value={formatINR(todayRevenue)} accent="#2563eb" />
         <Stat title="Today's Orders" value={todayOrders.length} accent="#059669" />
         <Stat title="Pending Shipping" value={pendingShipping} accent="#d97706" />
@@ -540,7 +605,9 @@ export default async function OrdersPage({
         <Stat title="Payment Issues" value={paymentIssues} accent="#991b1b" />
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+      <section className={styles.workspace}>
+      <div className={styles.queueBar}>
+        <span className={styles.queueLabel}>Work queue</span>
         <Link
           href={tabHref({})}
           style={tabStyle(!isAllView && !isHiddenReview && !isPaymentPendingView)}
@@ -556,11 +623,11 @@ export default async function OrdersPage({
         <Link href={tabHref({ view: "all" })} style={tabStyle(isAllView && !isHiddenReview)}>
           All Orders ({visibleTotalCount || 0})
         </Link>
-        <div style={{ flex: 1 }} />
+        <div className={styles.queueSpacer} />
         <form
           action="/api/orders/bulk-sync-delhivery"
           method="POST"
-          style={{ display: "flex", gap: 6, alignItems: "center" }}
+          className={styles.syncForm}
           title="Looks up every order missing a waybill in Delhivery by Order Number (the reference you used when creating shipments in Delhivery One), and fills in tracking + status automatically on a match."
         >
           <input type="hidden" name="return_to" value={returnTo} />
@@ -569,23 +636,11 @@ export default async function OrdersPage({
             type="password"
             placeholder="Admin password"
             required
-            style={{ padding: "9px 10px", borderRadius: 8, border: "1px solid #ddd", fontSize: 13, width: 130 }}
           />
           <button
             type="submit"
-            style={{
-              padding: "9px 14px",
-              borderRadius: 999,
-              border: "1px solid #ddd",
-              background: "#fff",
-              color: "#374151",
-              fontWeight: 700,
-              fontSize: 13,
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-            }}
           >
-            🔄 Sync tracking by Order ID
+            ↻ Sync tracking
           </button>
         </form>
         <Link href={tabHref({ show_hidden: "1" })} style={tabStyle(isHiddenReview, true)}>
@@ -595,90 +650,77 @@ export default async function OrdersPage({
 
       <form
         method="GET"
-        style={{
-          background: "#fff",
-          border: "1px solid #e5e7eb",
-          borderRadius: 14,
-          padding: 16,
-          marginBottom: 20,
-          display: "grid",
-          gridTemplateColumns: showFullFilters
-            ? "2fr 1fr 1fr 1fr 1fr 1fr auto auto"
-            : "2fr 1fr 1fr 1fr auto auto",
-          gap: 12,
-          alignItems: "end",
-        }}
+        className={`${styles.filters} ${!showFullFilters ? styles.filtersCompact : ""}`}
       >
         {params.view && <input type="hidden" name="view" value={params.view} />}
         {params.show_hidden && <input type="hidden" name="show_hidden" value={params.show_hidden} />}
 
-        <div>
-          <label style={label}>Search</label>
+        <div className={`${styles.field} ${styles.search}`}>
+          <label>Search orders</label>
           <input
             name="q"
             defaultValue={params.q || ""}
-            placeholder="Order no, name, phone..."
-            style={input}
+            placeholder="Order #, customer, phone, email or city"
           />
         </div>
 
-        <div>
-          <label style={label}>Payment</label>
-          <select name="payment" defaultValue={params.payment || ""} style={input}>
-            <option value="">All</option>
-            <option value="paid">paid</option>
-            <option value="pending">pending</option>
-            <option value="failed">failed</option>
-            <option value="refunded">refunded</option>
-            <option value="cancelled">cancelled</option>
+        <div className={styles.field}>
+          <label>Payment</label>
+          <select name="payment" defaultValue={params.payment || ""}>
+            <option value="">Any status</option>
+            <option value="paid">Paid</option>
+            <option value="pending">Pending</option>
+            <option value="failed">Failed</option>
+            <option value="refunded">Refunded</option>
+            <option value="cancelled">Cancelled</option>
           </select>
         </div>
 
         {showFullFilters && (
-          <div>
-            <label style={label}>Order Status</label>
-            <select name="shipping" defaultValue={params.shipping || ""} style={input}>
-              <option value="">All</option>
-              <option value="pending">pending</option>
-              <option value="confirmed">confirmed</option>
-              <option value="packed">packed</option>
-              <option value="shipped">shipped</option>
-              <option value="out_for_delivery">out_for_delivery</option>
-              <option value="delivered">delivered</option>
-              <option value="completed">completed</option>
-              <option value="cancelled">cancelled</option>
-              <option value="return_requested">return_requested</option>
-              <option value="returned">returned</option>
-              <option value="refunded">refunded</option>
-              <option value="rejected">rejected</option>
+          <div className={styles.field}>
+            <label>Fulfillment</label>
+            <select name="shipping" defaultValue={params.shipping || ""}>
+              <option value="">Any status</option>
+              <option value="pending">Pending</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="packed">Packed</option>
+              <option value="shipped">Shipped</option>
+              <option value="out_for_delivery">Out for delivery</option>
+              <option value="delivered">Delivered</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="return_requested">Return requested</option>
+              <option value="returned">Returned</option>
+              <option value="refunded">Refunded</option>
+              <option value="rejected">Rejected</option>
             </select>
           </div>
         )}
 
-        <div>
-          <label style={label}>Payment Type</label>
-          <select name="payment_type" defaultValue={params.payment_type || ""} style={input}>
-            <option value="">All</option>
+        <div className={styles.field}>
+          <label>Payment type</label>
+          <select name="payment_type" defaultValue={params.payment_type || ""}>
+            <option value="">Any type</option>
             <option value="full">Full</option>
             <option value="partial_cod">Partial (COD)</option>
           </select>
         </div>
 
-        <div>
-          <label style={label}>Date</label>
-          <select name="date" defaultValue={params.date || ""} style={input}>
-            <option value="">All</option>
-            <option value="today">Today</option>
-            <option value="7days">Last 7 days</option>
-            <option value="month">This month</option>
-          </select>
+        <div className={styles.field}>
+          <label>From date</label>
+          <input type="date" name="date_from" defaultValue={params.date_from || ""} />
+        </div>
+
+        <div className={styles.field}>
+          <label>To date</label>
+          <input type="date" name="date_to" defaultValue={params.date_to || ""} />
         </div>
 
         {showFullFilters && (
-          <div>
-            <label style={label}>Coupon</label>
-            <select name="coupon" defaultValue={params.coupon || ""} style={input}>
-              <option value="">All</option>
+          <div className={styles.field}>
+            <label>Coupon</label>
+            <select name="coupon" defaultValue={params.coupon || ""}>
+              <option value="">Any coupon</option>
               {coupons.map((c: any) => (
                 <option key={c} value={c}>
                   {c}
@@ -688,99 +730,88 @@ export default async function OrdersPage({
           </div>
         )}
 
-        <button
-          type="submit"
-          style={{
-            padding: "11px 18px",
-            borderRadius: 8,
-            border: 0,
-            background: "#111",
-            color: "#fff",
-            cursor: "pointer",
-            fontWeight: 700,
-          }}
-        >
-          Filter
-        </button>
-
-        {hasFilters && (
-          <a
-            href={isAllView ? "/orders?view=all" : isPaymentPendingView ? "/orders?view=payment_pending" : "/orders"}
-            style={{
-              padding: "11px 18px",
-              borderRadius: 8,
-              border: "1px solid #ddd",
-              background: "#fff",
-              color: "#111",
-              fontWeight: 600,
-              textDecoration: "none",
-              textAlign: "center",
-            }}
-          >
-            Clear
-          </a>
-        )}
+        <div className={styles.filterActions}>
+          <button type="submit" className={styles.filterButton}>Apply</button>
+          {hasFilters && <a href={clearHref} className={styles.clearButton}>Reset</a>}
+        </div>
       </form>
 
-      <div
-        style={{
-          background: "#fff",
-          border: "1px solid #e5e7eb",
-          borderRadius: 14,
-          overflow: "hidden",
-        }}
-      >
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1350 }}>
-            <thead style={{ background: "#f9fafb" }}>
+      <div className={styles.quickRanges}>
+        <span>Quick range:</span>
+        <Link href={quickRangeHref("today")}>Today</Link>
+        <Link href={quickRangeHref("7days")}>Last 7 days</Link>
+        <Link href={quickRangeHref("month")}>This month</Link>
+      </div>
+      </section>
+
+      <section className={styles.workspace}>
+        <div className={styles.resultsBar}>
+          <span><strong>{orders.length}</strong> order{orders.length === 1 ? "" : "s"} shown</span>
+          <span className={styles.rangeText}>{formatDateRange(params.date_from, params.date_to, params.date)}</span>
+        </div>
+        <div className={styles.tableWrap}>
+          <table className={styles.ordersTable}>
+            <thead>
               <tr>
-                <th style={th}>Order</th>
-                <th style={th}>Customer</th>
-                <th style={th}>Items</th>
-                <th style={th}>Amount</th>
-                <th style={th}>Payment</th>
-                <th style={th}>Order Status</th>
-                <th style={th}>Delivery Status</th>
-                <th style={th}>Date</th>
-                <th style={th}>Action</th>
+                <th>Order</th>
+                <th>Customer</th>
+                <th>Items</th>
+                <th>Amount</th>
+                <th>Payment</th>
+                <th>Fulfillment</th>
+                <th>Courier</th>
+                <th>Placed</th>
+                <th>Actions</th>
               </tr>
             </thead>
 
             <tbody>
               {orders.map((order: any) => {
                 const whatsappPhone = normalizePhone(order.customer_phone || "");
+                const customerOrderCount = customerOrderCounts.get(whatsappPhone) || 0;
                 const codPending =
                   order.payment_type === "partial_cod" && order.cod_balance_status === "pending";
 
                 return (
                   <tr
                     key={order.id}
-                    className="order-row"
                     style={order.is_hidden ? { opacity: 0.6, background: "#fafafa" } : undefined}
                   >
-                    <td style={td}>
-                      <b>{order.order_number}</b>
+                    <td>
+                      <Link href={`/orders/${order.id}`} className={styles.orderNumber}>
+                        {order.order_number}
+                      </Link>
                       {order.is_hidden && (
-                        <div style={{ fontSize: 11, color: "#9a3412", marginTop: 2 }}>
+                        <div className={styles.subtle} style={{ color: "#9a3412" }}>
                           {order.hidden_reason || "Marked as test"}
                         </div>
                       )}
                     </td>
-                    <td style={td}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <td>
+                      <div className={styles.customer}>
                         {avatar(order.customer_name)}
-                        <div>
-                          <div style={{ fontWeight: 700 }}>{order.customer_name}</div>
-                          <div style={{ color: "#888", fontSize: 12, display: "flex", alignItems: "center" }}>
+                        <div className={styles.customerIdentity}>
+                          <div className={styles.customerNameLine}>
+                            <span className={styles.customerName}>{order.customer_name}</span>
+                            {customerOrderCount > 1 && (
+                              <span
+                                className={styles.repeatBadge}
+                                title={`${customerOrderCount} orders linked to this phone number`}
+                              >
+                                Repeat · {customerOrderCount} orders
+                              </span>
+                            )}
+                          </div>
+                          <div className={styles.subtle} style={{ display: "flex", alignItems: "center" }}>
                             {order.customer_phone}
                             <CopyButton text={order.customer_phone || ""} />
                           </div>
                         </div>
                       </div>
                     </td>
-                    <td style={td}>{itemsPreview(order.items)}</td>
-                    <td style={td}>
-                      <b>{formatINR(order.amount_in_paise)}</b>
+                    <td>{itemsPreview(order.items)}</td>
+                    <td>
+                      <span className={styles.amount}>{formatINR(order.amount_in_paise)}</span>
                       {codPending && (
                         <div style={{ marginTop: 4 }}>
                           {badge("cod pending")}{" "}
@@ -790,11 +821,11 @@ export default async function OrdersPage({
                         </div>
                       )}
                     </td>
-                    <td style={td}>
+                    <td>
                       {badge(order.payment_status)}
                       <div>{paymentTypeTag(order.payment_type)}</div>
                     </td>
-                    <td style={td}>
+                    <td>
                       <OrderStatusQuickEdit
                         orderId={order.id}
                         paymentStatus={order.payment_status}
@@ -804,19 +835,24 @@ export default async function OrdersPage({
                         returnTo={returnTo}
                       />
                     </td>
-                    <td style={td}>{deliveryStatusCell(order)}</td>
-                    <td style={td}>{new Date(order.created_at).toLocaleString()}</td>
-                    <td style={td}>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                        <Link href={`/orders/${order.id}`}>View</Link>
-                        <a href={`/api/orders/${order.id}/invoice`} title="Download invoice">
+                    <td>{deliveryStatusCell(order)}</td>
+                    <td className={styles.date}>
+                      {new Date(order.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                      <div className={styles.subtle}>
+                        {new Date(order.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                      </div>
+                    </td>
+                    <td>
+                      <div className={styles.actions}>
+                        <Link href={`/orders/${order.id}`} className={styles.actionLink}>Open</Link>
+                        <a href={`/api/orders/${order.id}/invoice`} title="Download invoice" className={`${styles.actionLink} ${styles.iconLink}`}>
                           📄
                         </a>
                         {whatsappPhone && (
                           <Link
                             href={`/inbox/${whatsappPhone}`}
                             title="Message on WhatsApp"
-                            style={{ textDecoration: "none" }}
+                            className={`${styles.actionLink} ${styles.iconLink}`}
                           >
                             💬
                           </Link>
@@ -830,7 +866,7 @@ export default async function OrdersPage({
 
               {orders.length === 0 && (
                 <tr>
-                  <td style={td} colSpan={9}>
+                  <td className={styles.empty} colSpan={9}>
                     {isHiddenReview
                       ? "No test/hidden orders."
                       : isPaymentPendingView
@@ -844,10 +880,10 @@ export default async function OrdersPage({
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
       {orders.length >= 300 && (
-        <p style={{ color: "#999", fontSize: 13, marginTop: 12 }}>
+        <p className={styles.limitNote}>
           Showing latest 300 matching orders. Use search/filters to narrow it down.
         </p>
       )}
@@ -867,33 +903,3 @@ function tabStyle(active: boolean, danger?: boolean) {
     color: active ? "#fff" : danger ? "#991b1b" : "#374151",
   };
 }
-
-const label = {
-  display: "block",
-  fontSize: 12,
-  color: "#666",
-  marginBottom: 6,
-};
-
-const input = {
-  width: "100%",
-  padding: 10,
-  borderRadius: 8,
-  border: "1px solid #ddd",
-  boxSizing: "border-box" as const,
-};
-
-const th = {
-  textAlign: "left" as const,
-  padding: 12,
-  borderBottom: "1px solid #e5e7eb",
-  fontSize: 13,
-  color: "#555",
-  whiteSpace: "nowrap" as const,
-};
-
-const td = {
-  padding: 12,
-  borderBottom: "1px solid #f1f1f1",
-  fontSize: 14,
-};
