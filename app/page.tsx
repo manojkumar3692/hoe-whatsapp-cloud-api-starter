@@ -1,404 +1,163 @@
 import Link from "next/link";
 import Header from "./components/Header";
 import { supabaseAdmin } from "../lib/supabaseAdmin";
-import { normalizePhone } from "../lib/phone";
+import { parseCartItems, cartItemName } from "../lib/cartItems";
+import styles from "./home.module.css";
 
 export const dynamic = "force-dynamic";
+
+const READY_STATUSES = ["pending", "confirmed", "packed"];
+const UNPAID_STATUSES = ["pending", "failed"];
 
 function formatINR(paise: number) {
   return `₹${((paise || 0) / 100).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 }
 
-function badge(value: string, bg: string, color: string) {
-  return (
-    <span
-      style={{
-        background: bg,
-        color,
-        padding: "4px 10px",
-        borderRadius: 999,
-        fontSize: 12,
-        fontWeight: 700,
-        whiteSpace: "nowrap",
-      }}
-    >
-      {value}
-    </span>
-  );
+function dubaiBoundaries() {
+  const shifted = new Date(Date.now() + 4 * 60 * 60 * 1000);
+  const year = shifted.getUTCFullYear();
+  const month = shifted.getUTCMonth();
+  const day = shifted.getUTCDate();
+  return {
+    today: new Date(Date.UTC(year, month, day) - 4 * 60 * 60 * 1000).toISOString(),
+    month: new Date(Date.UTC(year, month, 1) - 4 * 60 * 60 * 1000).toISOString(),
+  };
 }
 
-function shippingBadge(status: string) {
-  const colors: Record<string, [string, string]> = {
-    pending: ["#fef9c3", "#854d0e"],
-    confirmed: ["#dbeafe", "#1d4ed8"],
-    packed: ["#dbeafe", "#1d4ed8"],
-    shipped: ["#e0e7ff", "#3730a3"],
-    out_for_delivery: ["#fce7f3", "#9d174d"],
-    delivered: ["#dcfce7", "#166534"],
-    completed: ["#dcfce7", "#166534"],
-    cancelled: ["#fee2e2", "#991b1b"],
-    returned: ["#e5e7eb", "#374151"],
-  };
-  const [bg, color] = colors[status] || ["#f3f4f6", "#374151"];
-  return badge(status, bg, color);
+function itemSummary(raw: any) {
+  const items = parseCartItems(raw);
+  if (!items.length) return "No item details";
+  return items
+    .map((item: any) => `${Math.max(Number(item.quantity || item.qty || 1), 1)} × ${cartItemName(item) || "Item"}`)
+    .join(", ");
+}
+
+function ageLabel(value: string) {
+  const hours = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 3_600_000));
+  if (hours < 1) return "Less than 1 hour ago";
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
 }
 
 export default async function Home() {
   const supabase = supabaseAdmin();
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const boundary = dubaiBoundaries();
 
   const [
-    { data: customers },
-    { data: orders },
-    { data: campaigns },
-    { data: messages },
-    { data: cartSessions },
+    { data: todayOrders },
+    { data: monthOrders },
+    { data: readyOrders },
+    { count: readyCount },
+    { count: awaitingPaymentCount },
+    { data: codOrders },
+    { data: inventory },
+    { count: unmappedInventoryCount },
   ] = await Promise.all([
-    supabase.from("customers").select("*"),
-    supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(50),
-    supabase.from("campaigns").select("*").order("created_at", { ascending: false }).limit(5),
-    supabase.from("message_logs").select("*").order("created_at", { ascending: false }).limit(100),
+    supabase.from("orders").select("amount_in_paise, payment_status").eq("is_hidden", false).gte("created_at", boundary.today),
+    supabase.from("orders").select("amount_in_paise").eq("is_hidden", false).eq("payment_status", "paid").gte("created_at", boundary.month),
     supabase
-      .from("checkout_sessions")
-      .select("id, order_number, abandoned_cart_notified_at, created_at")
-      .is("abandoned_cart_notified_at", null)
-      .order("created_at", { ascending: false })
-      .limit(300),
+      .from("orders")
+      .select("id, order_number, customer_name, customer_city, items, amount_in_paise, shipping_status, created_at")
+      .eq("is_hidden", false)
+      .eq("payment_status", "paid")
+      .in("shipping_status", READY_STATUSES)
+      .order("created_at", { ascending: true })
+      .limit(8),
+    supabase.from("orders").select("*", { count: "exact", head: true }).eq("is_hidden", false).eq("payment_status", "paid").in("shipping_status", READY_STATUSES),
+    supabase.from("orders").select("*", { count: "exact", head: true }).eq("is_hidden", false).in("payment_status", UNPAID_STATUSES).in("shipping_status", READY_STATUSES),
+    supabase.from("orders").select("balance_due_in_paise").eq("is_hidden", false).eq("payment_type", "partial_cod").eq("cod_balance_status", "pending"),
+    supabase.from("inventory_skus").select("id, product_name, size, current_stock, low_stock_threshold").eq("active", true).order("product_name"),
+    supabase.from("inventory_unmapped_items").select("*", { count: "exact", head: true }),
   ]);
 
-  // Abandoned-cart KPI: a session only counts as converted once its linked
-  // order is actually paid — see /abandoned-carts for the full breakdown
-  // and why an order_number alone doesn't mean "converted."
-  const sessionOrderNumbers = [
-    ...new Set((cartSessions || []).map((s: any) => s.order_number).filter(Boolean)),
-  ];
+  const paidToday = (todayOrders || []).filter((order: any) => order.payment_status === "paid");
+  const todayRevenue = paidToday.reduce((sum: number, order: any) => sum + (order.amount_in_paise || 0), 0);
+  const monthRevenue = (monthOrders || []).reduce((sum: number, order: any) => sum + (order.amount_in_paise || 0), 0);
+  const codDue = (codOrders || []).reduce((sum: number, order: any) => sum + (order.balance_due_in_paise || 0), 0);
+  const lowStock = (inventory || []).filter((sku: any) => sku.current_stock <= sku.low_stock_threshold);
 
-  const { data: linkedOrders } = sessionOrderNumbers.length
-    ? await supabase
-        .from("orders")
-        .select("order_number, payment_status")
-        .in("order_number", sessionOrderNumbers)
-    : { data: [] as any[] };
-
-  const paidOrderNumbers = new Set(
-    (linkedOrders || []).filter((o: any) => o.payment_status === "paid").map((o: any) => o.order_number)
-  );
-
-  const abandonedCartsPending = (cartSessions || []).filter(
-    (s: any) => !s.order_number || !paidOrderNumbers.has(s.order_number)
-  ).length;
-
-  const todayOrders = orders?.filter((o: any) => new Date(o.created_at) >= today) || [];
-
-  const todayRevenue = todayOrders.reduce(
-    (sum: number, o: any) => (o.payment_status === "paid" ? sum + (o.amount_in_paise || 0) : sum),
-    0
-  );
-
-  const totalRevenue =
-    orders?.reduce(
-      (sum: number, o: any) => (o.payment_status === "paid" ? sum + (o.amount_in_paise || 0) : sum),
-      0
-    ) || 0;
-
-  const pendingShipments =
-    orders?.filter((o: any) => ["pending", "confirmed", "packed"].includes(o.shipping_status)).length || 0;
-
-  const codPending =
-    orders?.filter((o: any) => o.payment_type === "partial_cod" && o.cod_balance_status === "pending")
-      .length || 0;
-
-  const healthy = customers?.filter((c: any) => c.marketing_health === "healthy").length || 0;
-  const warning = customers?.filter((c: any) => c.marketing_health === "warning").length || 0;
-  const cooldown = customers?.filter((c: any) => c.marketing_health === "cooldown").length || 0;
-
-  const latestReplies = messages?.filter((m: any) => m.direction === "inbound").slice(0, 5) || [];
-  const failedMessages = messages?.filter((m: any) => m.status === "failed").length || 0;
-
-  const alerts: { text: string; href: string; tone: "warn" | "danger" }[] = [];
-
-  if (abandonedCartsPending > 0) {
-    alerts.push({
-      text: `${abandonedCartsPending} checkout${abandonedCartsPending === 1 ? "" : "s"} abandoned and not yet reminded — review who needs a nudge`,
-      href: "/abandoned-carts",
-      tone: "warn",
-    });
-  }
-
-  if (codPending > 0) {
-    alerts.push({
-      text: `${codPending} COD order${codPending === 1 ? "" : "s"} waiting on balance collection`,
-      href: "/orders?payment_type=partial_cod",
-      tone: "warn",
-    });
-  }
-
-  if (cooldown > 0) {
-    alerts.push({
-      text: `${cooldown} customer${cooldown === 1 ? "" : "s"} in marketing cooldown — messages to them are paused`,
-      href: "/customers",
-      tone: "danger",
-    });
-  }
-
-  if (failedMessages > 0) {
-    alerts.push({
-      text: `${failedMessages} message${failedMessages === 1 ? "" : "s"} failed to deliver recently`,
-      href: "/messages",
-      tone: "danger",
-    });
+  const stockByProduct = new Map<string, any[]>();
+  for (const sku of inventory || []) {
+    const rows = stockByProduct.get(sku.product_name) || [];
+    rows.push(sku);
+    stockByProduct.set(sku.product_name, rows);
   }
 
   return (
-    <main>
+    <main className={styles.page}>
       <Header active="home" />
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
+      <section className={styles.heading}>
         <div>
-          <h1 style={{ margin: 0 }}>Welcome back</h1>
-          <p className="muted" style={{ margin: "4px 0 0" }}>
-            Here's what's happening across orders, customers, and WhatsApp today —{" "}
-            {today.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}.
-          </p>
+          <p className={styles.eyebrow}>Operations dashboard</p>
+          <h1>Today at House of Eon</h1>
+          <p>{new Date().toLocaleDateString("en-IN", { timeZone: "Asia/Dubai", weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p>
         </div>
-      </div>
-
-      {alerts.length > 0 && (
-        <div style={{ marginBottom: 20, display: "flex", flexDirection: "column", gap: 8 }}>
-          {alerts.map((a, i) => (
-            <Link
-              key={i}
-              href={a.href}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                textDecoration: "none",
-                background: a.tone === "danger" ? "#fef2f2" : "#fffbeb",
-                border: `1px solid ${a.tone === "danger" ? "#fecaca" : "#fde68a"}`,
-                color: a.tone === "danger" ? "#991b1b" : "#92400e",
-                borderRadius: 12,
-                padding: "12px 16px",
-                fontSize: 14,
-                fontWeight: 600,
-              }}
-            >
-              <span>{a.tone === "danger" ? "🔴" : "🟡"}</span>
-              <span style={{ flex: 1 }}>{a.text}</span>
-              <span>View →</span>
-            </Link>
-          ))}
-        </div>
-      )}
-
-      <h2 style={{ fontSize: 15, color: "#9a8f80", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 }}>
-        Today
-      </h2>
-
-      <div style={grid4}>
-        <StatCard title="Revenue Today" value={formatINR(todayRevenue)} accent="#166534" href="/orders?date=today" />
-        <StatCard title="Orders Today" value={todayOrders.length} accent="#1d4ed8" href="/orders?date=today" />
-        <StatCard title="Pending Shipments" value={pendingShipments} accent="#9a3412" href="/orders" />
-        <StatCard
-          title="Abandoned Carts"
-          value={abandonedCartsPending}
-          accent={abandonedCartsPending > 0 ? "#991b1b" : "#166534"}
-          href="/abandoned-carts"
-        />
-      </div>
-
-      <h2 style={{ fontSize: 15, color: "#9a8f80", textTransform: "uppercase", letterSpacing: 0.5, margin: "24px 0 10px" }}>
-        Overall
-      </h2>
-
-      <div style={grid4}>
-        <StatCard title="Total Customers" value={customers?.length || 0} accent="#1d4ed8" href="/customers" />
-        <StatCard title="Total Revenue" value={formatINR(totalRevenue)} accent="#166534" href="/orders" />
-        <StatCard title="Recent Replies" value={latestReplies.length} accent="#1d4ed8" href="/inbox" />
-        <div style={card}>
-          <div style={{ color: "#9a8f80", fontSize: 13, marginBottom: 8 }}>WhatsApp Account Health</div>
-          <div style={{ display: "flex", gap: 14 }}>
-            <div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: "#166534" }}>{healthy}</div>
-              <div style={{ fontSize: 11, color: "#9a8f80" }}>Healthy</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: "#92400e" }}>{warning}</div>
-              <div style={{ fontSize: 11, color: "#9a8f80" }}>Warning</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: "#991b1b" }}>{cooldown}</div>
-              <div style={{ fontSize: 11, color: "#9a8f80" }}>Cooldown</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1.2fr 0.8fr",
-          gap: 20,
-          marginTop: 30,
-        }}
-      >
-        <section className="card">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <h2 style={{ margin: 0 }}>Recent Orders</h2>
-            <Link href="/orders" style={{ fontSize: 13 }}>
-              View all →
-            </Link>
-          </div>
-
-          {(orders || []).slice(0, 6).map((o: any) => {
-            const whatsappPhone = normalizePhone(o.customer_phone || "");
-            return (
-              <div key={o.id} style={row}>
-                <div>
-                  <Link href={`/orders/${o.id}`} style={{ fontWeight: 700, textDecoration: "none", color: "#1c1712" }}>
-                    {o.order_number}
-                  </Link>
-                  <div className="muted" style={{ fontSize: 13 }}>
-                    {o.customer_name} • {o.customer_phone}
-                    {whatsappPhone && (
-                      <>
-                        {" "}
-                        ·{" "}
-                        <Link href={`/inbox/${whatsappPhone}`} style={{ color: "#166534" }}>
-                          💬 chat
-                        </Link>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontWeight: 700 }}>{formatINR(o.amount_in_paise)}</div>
-                  <div style={{ marginTop: 4 }}>{shippingBadge(o.shipping_status)}</div>
-                </div>
-              </div>
-            );
-          })}
-
-          {(orders || []).length === 0 && <p className="muted">No orders yet.</p>}
-        </section>
-
-        <section className="card">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <h2 style={{ margin: 0 }}>Latest Replies</h2>
-            <Link href="/inbox" style={{ fontSize: 13 }}>
-              Open inbox →
-            </Link>
-          </div>
-
-          {latestReplies.length === 0 && <p className="muted">No recent replies.</p>}
-
-          {latestReplies.map((m: any) => (
-            <div key={m.id} style={row}>
-              <div>
-                <b>{m.phone}</b>
-                <div className="muted" style={{ fontSize: 13 }}>{m.body || "[message]"}</div>
-              </div>
-
-              <Link href={`/inbox/${m.phone}`} style={{ fontSize: 13 }}>
-                Open
-              </Link>
-            </div>
-          ))}
-        </section>
-      </div>
-
-      <section className="card" style={{ marginTop: 20 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h2 style={{ margin: 0 }}>Recent Campaigns</h2>
-          <Link href="/campaign-history" style={{ fontSize: 13 }}>
-            View all →
-          </Link>
-        </div>
-
-        <table style={{ marginTop: 10 }}>
-          <thead>
-            <tr>
-              <th>Campaign</th>
-              <th>Template</th>
-              <th>Audience</th>
-              <th>Sent</th>
-              <th>Failed</th>
-              <th>Status</th>
-              <th></th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {(campaigns || []).map((c: any) => (
-              <tr key={c.id}>
-                <td>{c.name}</td>
-                <td>{c.template_name}</td>
-                <td>{c.total_recipients || 0}</td>
-                <td>{c.sent_count || 0}</td>
-                <td>{c.failed_count || 0}</td>
-                <td>{badge(c.status, "#e5e7eb", "#374151")}</td>
-                <td>
-                  <Link href={`/campaign-history/${c.id}`}>View</Link>
-                </td>
-              </tr>
-            ))}
-
-            {(!campaigns || campaigns.length === 0) && (
-              <tr>
-                <td colSpan={7} className="muted">
-                  No campaigns sent yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        <Link className={styles.primaryButton} href="/orders">Open paid order queue →</Link>
       </section>
+
+      <section className={styles.kpis} aria-label="Today’s sales summary">
+        <Kpi label="Paid orders today" value={String(paidToday.length)} note="Confirmed sales only" tone="green" href="/orders?view=all&payment=paid&date=today" />
+        <Kpi label="Revenue today" value={formatINR(todayRevenue)} note="From paid orders" tone="blue" href="/orders?view=all&payment=paid&date=today" />
+        <Kpi label="Ready to fulfil" value={String(readyCount || 0)} note="Paid and not shipped" tone="amber" href="/orders" />
+        <Kpi label="Revenue this month" value={formatINR(monthRevenue)} note={`${(monthOrders || []).length} paid orders`} tone="purple" href="/orders?view=all&payment=paid&date=month" />
+      </section>
+
+      <div className={styles.mainGrid}>
+        <section className={styles.panel}>
+          <div className={styles.panelHeader}>
+            <div><p className={styles.sectionLabel}>Do this next</p><h2>Paid orders ready to fulfil</h2><p>Oldest paid order appears first.</p></div>
+            <Link href="/orders">View all {readyCount || 0}</Link>
+          </div>
+          <div className={styles.orderList}>
+            {(readyOrders || []).map((order: any, index: number) => (
+              <Link href={`/orders/${order.id}`} className={styles.orderRow} key={order.id}>
+                <div className={styles.queueNumber}>{index + 1}</div>
+                <div className={styles.orderMain}>
+                  <div className={styles.orderTopline}><strong>{order.order_number}</strong><span className={styles.paidBadge}>Paid</span><span className={styles.statusBadge}>{String(order.shipping_status).replaceAll("_", " ")}</span></div>
+                  <div className={styles.customerLine}>{order.customer_name}{order.customer_city ? ` · ${order.customer_city}` : ""}</div>
+                  <div className={styles.itemLine}>{itemSummary(order.items)}</div>
+                </div>
+                <div className={styles.orderMeta}><strong>{formatINR(order.amount_in_paise)}</strong><span>{ageLabel(order.created_at)}</span><b>Open →</b></div>
+              </Link>
+            ))}
+            {(readyOrders || []).length === 0 && <div className={styles.emptyState}><span>✓</span><strong>Fulfilment queue is clear</strong><p>There are no paid orders waiting right now.</p></div>}
+          </div>
+        </section>
+
+        <aside className={styles.sideColumn}>
+          <section className={styles.panel}>
+            <div className={styles.panelHeader}><div><p className={styles.sectionLabel}>Needs attention</p><h2>Exceptions</h2></div></div>
+            <Attention label="Awaiting payment" value={String(awaitingPaymentCount || 0)} detail="Do not fulfil these" href="/orders?view=payment_pending" warning={(awaitingPaymentCount || 0) > 0} />
+            <Attention label="COD balance due" value={formatINR(codDue)} detail={`${(codOrders || []).length} orders`} href="/orders?view=all&payment_type=partial_cod" warning={codDue > 0} />
+            <Attention label="Low-stock SKUs" value={String(lowStock.length)} detail="At or below warning level" href="/inventory" warning={lowStock.length > 0} />
+            {(unmappedInventoryCount || 0) > 0 && <Attention label="Unmapped paid items" value={String(unmappedInventoryCount)} detail="Review before fulfilment" href="/inventory" warning />}
+          </section>
+        </aside>
+      </div>
+
+      {(inventory || []).length > 0 && (
+        <section className={styles.panel}>
+          <div className={styles.panelHeader}><div><p className={styles.sectionLabel}>Inventory</p><h2>Stock remaining</h2><p>Automatically reduced by paid orders only.</p></div><Link href="/inventory">Manage stock →</Link></div>
+          <div className={styles.stockGrid}>
+            {[...stockByProduct.entries()].map(([product, skus]) => (
+              <Link href="/inventory" className={styles.stockCard} key={product}>
+                <strong>{product}</strong>
+                <div>{skus.sort((a, b) => a.size.localeCompare(b.size)).map((sku: any) => <span key={sku.id} className={sku.current_stock <= sku.low_stock_threshold ? styles.stockLow : ""}><small>{String(sku.size).toUpperCase()}</small><b>{sku.current_stock}</b></span>)}</div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
     </main>
   );
 }
 
-function StatCard({
-  title,
-  value,
-  accent,
-  href,
-}: {
-  title: string;
-  value: any;
-  accent: string;
-  href: string;
-}) {
-  return (
-    <Link href={href} style={{ textDecoration: "none", color: "inherit" }}>
-      <div style={{ ...card, borderLeft: `4px solid ${accent}`, cursor: "pointer" }}>
-        <div style={{ color: "#9a8f80", fontSize: 13 }}>{title}</div>
-        <div style={{ fontSize: 26, fontWeight: 800, marginTop: 6, color: "#1c1712" }}>{value}</div>
-      </div>
-    </Link>
-  );
+function Kpi({ label, value, note, tone, href }: { label: string; value: string; note: string; tone: string; href: string }) {
+  return <Link href={href} className={`${styles.kpi} ${styles[tone]}`}><span>{label}</span><strong>{value}</strong><small>{note}</small></Link>;
 }
 
-const grid4 = {
-  display: "grid",
-  gridTemplateColumns: "repeat(4, 1fr)",
-  gap: 16,
-};
-
-const card = {
-  background: "#fff",
-  border: "1px solid #eadfce",
-  borderRadius: 14,
-  padding: 16,
-  boxShadow: "0 8px 22px rgba(0,0,0,.04)",
-};
-
-const row = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: 12,
-  borderBottom: "1px solid #f1ece1",
-  padding: "12px 0",
-};
+function Attention({ label, value, detail, href, warning }: { label: string; value: string; detail: string; href: string; warning: boolean }) {
+  return <Link href={href} className={`${styles.attention} ${warning ? styles.attentionWarning : ""}`}><div><strong>{label}</strong><span>{detail}</span></div><b>{value}</b><em>→</em></Link>;
+}

@@ -41,7 +41,7 @@
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(6, minmax(145px, 1fr));
+  grid-template-columns: repeat(4, minmax(170px, 1fr));
   gap: 12px;
   margin-bottom: 18px;
 }
@@ -76,8 +76,10 @@
 .queueSpacer { flex: 1; }
 
 .syncForm { display: flex; align-items: center; gap: 7px; }
-.syncForm input { width: 132px; padding: 8px 10px; font-size: 12px; }
-.syncForm button { padding: 9px 12px; border: 1px solid #ded2c2; background: #fff; color: #4d4439; font-size: 12px; font-weight: 750; white-space: nowrap; }
+.syncForm button { padding: 9px 13px; border: 1px solid #c9b899; background: #fff; color: #4d4439; font-size: 12px; font-weight: 750; white-space: nowrap; }
+
+.filterPanel > summary { padding: 12px 16px; color: #6d6256; cursor: pointer; font-size: 12px; font-weight: 800; list-style-position: inside; }
+.filterPanel[open] > summary { border-bottom: 1px solid #f1e9de; background: #fffcf7; }
 
 .filters {
   display: grid;

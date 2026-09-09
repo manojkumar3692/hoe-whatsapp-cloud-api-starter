@@ -359,36 +359,21 @@ export default async function OrdersPage({
   todayStart.setHours(0, 0, 0, 0);
 
   const todayOrders = (statsOrders || []).filter((o: any) => new Date(o.created_at) >= todayStart);
+  const paidToday = todayOrders.filter((o: any) => o.payment_status === "paid");
 
   const todayRevenue = todayOrders.reduce(
     (sum: number, o: any) => (o.payment_status === "paid" ? sum + (o.amount_in_paise || 0) : sum),
     0
   );
 
-  const pendingShipping = (statsOrders || []).filter(
-    (o: any) => o.payment_status === "paid" && ["pending", "packed"].includes(o.shipping_status)
-  ).length;
-
-  const delivered = (statsOrders || []).filter((o: any) => o.shipping_status === "delivered").length;
-
-  const codPendingOrders = (statsOrders || []).filter(
-    (o: any) => o.payment_type === "partial_cod" && o.cod_balance_status === "pending"
-  );
-
-  const codPendingAmount = codPendingOrders.reduce(
-    (sum: number, o: any) => sum + (o.balance_due_in_paise || 0),
-    0
-  );
-
-  const paymentIssues = (statsOrders || []).filter((o: any) =>
-    ["failed", "pending"].includes(o.payment_status)
-  ).length;
-
   // ------------------------------------------------------------------
   // Table query — respects the active tab + filters.
   // ------------------------------------------------------------------
 
-  let query = supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(300);
+  // The active paid work queue is FIFO (oldest first). History and unpaid
+  // views remain newest first because those are primarily for lookup.
+  const oldestFirst = !isHiddenReview && !isPaymentPendingView && !isAllView;
+  let query = supabase.from("orders").select("*").order("created_at", { ascending: oldestFirst }).limit(300);
 
   if (isHiddenReview) {
     query = query.eq("is_hidden", true);
@@ -523,7 +508,7 @@ export default async function OrdersPage({
     ? "Unpaid checkouts that have not entered fulfillment."
     : isAllView
     ? "Search and audit the complete order history."
-    : "Paid orders waiting to be confirmed, packed, or shipped.";
+    : "Paid orders ready for your team, with the oldest order first.";
 
   return (
     <main className={styles.page}>
@@ -593,16 +578,10 @@ export default async function OrdersPage({
       )}
 
       <div className={styles.stats}>
-        <Stat title="Today's Revenue" value={formatINR(todayRevenue)} accent="#2563eb" />
-        <Stat title="Today's Orders" value={todayOrders.length} accent="#059669" />
-        <Stat title="Pending Shipping" value={pendingShipping} accent="#d97706" />
-        <Stat title="Delivered" value={delivered} accent="#16a34a" />
-        <Stat
-          title="COD Balance Pending"
-          value={`${codPendingOrders.length} (${formatINR(codPendingAmount)})`}
-          accent="#9a3412"
-        />
-        <Stat title="Payment Issues" value={paymentIssues} accent="#991b1b" />
+        <Stat title="Paid orders today" value={paidToday.length} accent="#059669" />
+        <Stat title="Revenue today" value={formatINR(todayRevenue)} accent="#2563eb" />
+        <Stat title="Ready to fulfil" value={needsActionCount || 0} accent="#d97706" />
+        <Stat title="Awaiting payment" value={paymentPendingCount || 0} accent="#991b1b" />
       </div>
 
       <section className={styles.workspace}>
@@ -612,13 +591,13 @@ export default async function OrdersPage({
           href={tabHref({})}
           style={tabStyle(!isAllView && !isHiddenReview && !isPaymentPendingView)}
         >
-          🔔 Needs Action ({needsActionCount || 0})
+          ✅ Paid — Ready to fulfil ({needsActionCount || 0})
         </Link>
         <Link
           href={tabHref({ view: "payment_pending" })}
           style={tabStyle(isPaymentPendingView, true)}
         >
-          💳 Payment Pending ({paymentPendingCount || 0})
+          Awaiting payment ({paymentPendingCount || 0})
         </Link>
         <Link href={tabHref({ view: "all" })} style={tabStyle(isAllView && !isHiddenReview)}>
           All Orders ({visibleTotalCount || 0})
@@ -631,16 +610,10 @@ export default async function OrdersPage({
           title="Looks up every order missing a waybill in Delhivery by Order Number (the reference you used when creating shipments in Delhivery One), and fills in tracking + status automatically on a match."
         >
           <input type="hidden" name="return_to" value={returnTo} />
-          <input
-            name="admin_password"
-            type="password"
-            placeholder="Admin password"
-            required
-          />
           <button
             type="submit"
           >
-            ↻ Sync tracking
+            ↻ Sync all tracking
           </button>
         </form>
         <Link href={tabHref({ show_hidden: "1" })} style={tabStyle(isHiddenReview, true)}>
@@ -648,6 +621,8 @@ export default async function OrdersPage({
         </Link>
       </div>
 
+      <details className={styles.filterPanel} open={hasFilters}>
+        <summary>{hasFilters ? "Filters applied — open to change" : "Search or filter orders"}</summary>
       <form
         method="GET"
         className={`${styles.filters} ${!showFullFilters ? styles.filtersCompact : ""}`}
@@ -742,6 +717,7 @@ export default async function OrdersPage({
         <Link href={quickRangeHref("7days")}>Last 7 days</Link>
         <Link href={quickRangeHref("month")}>This month</Link>
       </div>
+      </details>
       </section>
 
       <section className={styles.workspace}>
@@ -873,7 +849,7 @@ export default async function OrdersPage({
                       ? "No unpaid orders right now — everything here has either completed payment or hasn't been created yet."
                       : isAllView
                       ? "No orders found."
-                      : "Nothing needs action right now — every paid order has moved past pending/confirmed/packed. Check \"All Orders\" to see everything, or \"Payment Pending\" for checkouts that never completed."}
+                      : "The paid-order queue is clear. Open All Orders for history, or Awaiting Payment for incomplete checkouts."}
                   </td>
                 </tr>
               )}

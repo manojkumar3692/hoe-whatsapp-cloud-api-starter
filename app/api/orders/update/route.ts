@@ -5,10 +5,6 @@ export async function POST(req: NextRequest) {
   try {
     const form = await req.formData();
 
-    if (form.get("admin_password") !== process.env.ADMIN_PASSWORD) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const id = String(form.get("id") || "");
     const paymentStatus = String(form.get("payment_status") || "");
     const shippingStatus = String(form.get("shipping_status") || "");

@@ -354,13 +354,6 @@ export default async function OrderDetailPage({
               placeholder="e.g. 12345678901"
               style={{ ...input, marginTop: 0, flex: 1 }}
             />
-            <input
-              name="admin_password"
-              type="password"
-              placeholder="Admin password"
-              required
-              style={{ ...input, marginTop: 0, width: 160 }}
-            />
             <button
               type="submit"
               style={{
@@ -401,13 +394,6 @@ export default async function OrderDetailPage({
 
             <form action={`/api/orders/${order.id}/sync-delhivery`} method="POST">
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
-                <input
-                  name="admin_password"
-                  type="password"
-                  placeholder="Admin password"
-                  required
-                  style={{ ...input, marginTop: 0, width: 160 }}
-                />
                 <button
                   type="submit"
                   style={{
@@ -446,13 +432,6 @@ export default async function OrderDetailPage({
               defaultValue={order.shadowfax_waybill || ""}
               placeholder="e.g. SF1234567890TES"
               style={{ ...input, marginTop: 0, flex: 1 }}
-            />
-            <input
-              name="admin_password"
-              type="password"
-              placeholder="Admin password"
-              required
-              style={{ ...input, marginTop: 0, width: 160 }}
             />
             <button
               type="submit"
@@ -496,13 +475,6 @@ export default async function OrderDetailPage({
 
             <form action={`/api/orders/${order.id}/sync-shadowfax`} method="POST">
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
-                <input
-                  name="admin_password"
-                  type="password"
-                  placeholder="Admin password"
-                  required
-                  style={{ ...input, marginTop: 0, width: 160 }}
-                />
                 <button
                   type="submit"
                   style={{
@@ -561,17 +533,6 @@ export default async function OrderDetailPage({
 
         <form action="/api/orders/update" method="POST">
           <input type="hidden" name="id" value={order.id} />
-
-          <div style={{ marginBottom: 16 }}>
-            <label>Admin Password</label>
-            <input
-              type="password"
-              name="admin_password"
-              placeholder="Admin Password"
-              required
-              style={input}
-            />
-          </div>
 
           <div
             style={{

@@ -9,10 +9,6 @@ import { bulkSyncOrdersByOrderNumber } from "../../../../lib/delhiverySync";
 export async function POST(req: NextRequest) {
   const form = await req.formData();
 
-  if (form.get("admin_password") !== process.env.ADMIN_PASSWORD) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const result = await bulkSyncOrdersByOrderNumber();
 
   const returnTo = String(form.get("return_to") || "/orders");

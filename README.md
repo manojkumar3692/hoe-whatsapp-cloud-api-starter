@@ -21,7 +21,7 @@ Phone can be 10 digit India mobile or country-code format like `919876543210`.
 ## Supabase setup
 1. Create a Supabase project.
 2. Open SQL editor.
-3. Run `supabase/migrations/001_init.sql`, then `002_templates.sql`, then `003_abandoned_cart.sql`.
+3. Run the files in `supabase/migrations` in numeric order, through `008_inventory.sql`.
 4. Copy Supabase URL, anon key, and service role key.
 
 ## Meta setup
@@ -79,6 +79,10 @@ It skips anyone already marked `opt_out`, `blocked`, or in a marketing `cooldown
 
 ## Environment variables
 Copy `.env.example` to `.env.local` for local development or add them in Vercel.
+
+## Inventory
+
+`/inventory` tracks every fragrance in 8ML and 50ML sizes. Migration `008_inventory.sql` seeds opening stock at 25 units per 8ML SKU and 15 per 50ML SKU, then backfills existing paid orders. Pending and failed checkouts do not consume stock. Trial packs deduct one 8ML unit from each of the three named fragrances; regular bottles deduct their line-item quantity. Refunds/cancellations restore prior allocations, and manual adjustments/absolute overrides require a reason and remain visible in the stock movement history.
 
 ## Local run
 ```bash
