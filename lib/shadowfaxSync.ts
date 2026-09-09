@@ -90,6 +90,55 @@ async function applyShipmentToOrder(
   };
 }
 
+export type ShadowfaxBulkSyncResult = {
+  checked: number;
+  matched: number;
+  updated: number;
+  error?: string;
+};
+
+export async function bulkSyncShadowfaxStatuses(): Promise<ShadowfaxBulkSyncResult> {
+  const supabase = supabaseAdmin();
+  const { data, error } = await supabase
+    .from("orders")
+    .select("id, shipping_status, shadowfax_waybill")
+    .eq("is_hidden", false)
+    .not("shadowfax_waybill", "is", null);
+
+  if (error) return { checked: 0, matched: 0, updated: 0, error: error.message };
+
+  const allTrackedOrders = data || [];
+  const orders = allTrackedOrders.filter(
+    (order) => !SYNC_TERMINAL_STATUSES.includes(order.shipping_status)
+  );
+  const awbUseCount = new Map<string, number>();
+  for (const order of allTrackedOrders) {
+    if (order.shadowfax_waybill) {
+      awbUseCount.set(order.shadowfax_waybill, (awbUseCount.get(order.shadowfax_waybill) || 0) + 1);
+    }
+  }
+  let matched = 0;
+  let updated = 0;
+
+  try {
+    for (let i = 0; i < orders.length; i += 50) {
+      const batch = orders.slice(i, i + 50);
+      const shipments = await trackShadowfaxWaybills(batch.map((order) => order.shadowfax_waybill!));
+      for (const order of batch) {
+        if ((awbUseCount.get(order.shadowfax_waybill!) || 0) > 1) continue;
+        const shipment = shipments[order.shadowfax_waybill!];
+        if (!shipment) continue;
+        matched++;
+        const result = await applyShipmentToOrder(supabase, order, shipment);
+        if (result.synced) updated++;
+      }
+    }
+    return { checked: orders.length, matched, updated };
+  } catch (error: any) {
+    return { checked: orders.length, matched, updated, error: error.message || "Shadowfax bulk sync failed" };
+  }
+}
+
 export async function syncOrderShadowfaxStatus(orderId: string): Promise<ShadowfaxSyncResult> {
   const supabase = supabaseAdmin();
 

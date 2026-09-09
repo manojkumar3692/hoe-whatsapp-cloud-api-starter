@@ -181,11 +181,33 @@ function normalizeRef(s: string): string {
 export async function bulkSyncOrdersByOrderNumber(): Promise<BulkReferenceSyncResult> {
   const supabase = supabaseAdmin();
 
+  // First refresh orders that already have a Delhivery AWB. The old bulk
+  // action only handled missing AWBs, which meant an in-transit shipment
+  // could never become delivered from the Orders page.
+  const { data: trackedCandidates, error: trackedFetchError } = await supabase
+    .from("orders")
+    .select("id, order_number, shipping_status, delhivery_waybill")
+    .eq("is_hidden", false)
+    .not("delhivery_waybill", "is", null);
+
+  if (trackedFetchError) {
+    return {
+      checked: 0,
+      matched: 0,
+      updated: 0,
+      unmatchedOrderNumbers: [],
+      totalShipmentsReturned: 0,
+      sampleReturnedReferenceNumbers: [],
+      error: trackedFetchError.message,
+    };
+  }
+
   const { data: candidates, error: fetchError } = await supabase
     .from("orders")
     .select("id, order_number, shipping_status, delhivery_waybill")
     .eq("is_hidden", false)
     .is("delhivery_waybill", null)
+    .not("shipping_status", "in", `(${SYNC_TERMINAL_STATUSES.join(",")})`)
     .not("order_number", "is", null);
 
   const emptyDiagnostics = { totalShipmentsReturned: 0, sampleReturnedReferenceNumbers: [] };
@@ -195,8 +217,15 @@ export async function bulkSyncOrdersByOrderNumber(): Promise<BulkReferenceSyncRe
   }
 
   const orders = candidates || [];
-  if (orders.length === 0) {
-    return { checked: 0, matched: 0, updated: 0, unmatchedOrderNumbers: [], ...emptyDiagnostics };
+  const allTrackedOrders = trackedCandidates || [];
+  const trackedOrders = allTrackedOrders.filter(
+    (order) => !SYNC_TERMINAL_STATUSES.includes(order.shipping_status)
+  );
+  const awbUseCount = new Map<string, number>();
+  for (const order of allTrackedOrders) {
+    if (order.delhivery_waybill) {
+      awbUseCount.set(order.delhivery_waybill, (awbUseCount.get(order.delhivery_waybill) || 0) + 1);
+    }
   }
 
   // Batch to keep each request comfortably within Delhivery's rate limit
@@ -209,6 +238,26 @@ export async function bulkSyncOrdersByOrderNumber(): Promise<BulkReferenceSyncRe
   const unmatchedOrderNumbers: string[] = [];
 
   try {
+    for (let i = 0; i < trackedOrders.length; i += BATCH_SIZE) {
+      const batch = trackedOrders.slice(i, i + BATCH_SIZE);
+      const shipments = await trackWaybills(batch.map((o) => o.delhivery_waybill!));
+
+      for (const order of batch) {
+        if ((awbUseCount.get(order.delhivery_waybill!) || 0) > 1) {
+          unmatchedOrderNumbers.push(`${order.order_number} (duplicate AWB)`);
+          continue;
+        }
+        const shipment = shipments[order.delhivery_waybill!];
+        if (!shipment) {
+          unmatchedOrderNumbers.push(order.order_number);
+          continue;
+        }
+        matched++;
+        const result = await applyShipmentToOrder(supabase, order, shipment);
+        if (result.synced) updated++;
+      }
+    }
+
     for (let i = 0; i < orders.length; i += BATCH_SIZE) {
       const batch = orders.slice(i, i + BATCH_SIZE);
       const shipments = await trackByReferenceNumbersRaw(batch.map((o) => o.order_number));
@@ -238,7 +287,7 @@ export async function bulkSyncOrdersByOrderNumber(): Promise<BulkReferenceSyncRe
     }
   } catch (e: any) {
     return {
-      checked: orders.length,
+      checked: trackedOrders.length + orders.length,
       matched,
       updated,
       unmatchedOrderNumbers,
@@ -249,7 +298,7 @@ export async function bulkSyncOrdersByOrderNumber(): Promise<BulkReferenceSyncRe
   }
 
   return {
-    checked: orders.length,
+    checked: trackedOrders.length + orders.length,
     matched,
     updated,
     unmatchedOrderNumbers,

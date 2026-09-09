@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Fragment } from "react";
 import Header from "../components/Header";
 import OrderStatusQuickEdit from "../components/OrderStatusQuickEdit";
 import CopyButton from "../components/CopyButton";
@@ -40,6 +41,7 @@ function badge(value: string) {
     shipped: ["#e0e7ff", "#3730a3"],
     out_for_delivery: ["#fce7f3", "#9d174d"],
     delivered: ["#dcfce7", "#166534"],
+    delivery_disputed: ["#fee2e2", "#991b1b"],
     completed: ["#dcfce7", "#166534"],
     rejected: ["#fee2e2", "#991b1b"],
     return_requested: ["#ffedd5", "#9a3412"],
@@ -89,7 +91,13 @@ function paymentTypeTag(paymentType: string) {
 // Order Status values from "shipped" onward that really ought to have a
 // courier waybill attached by now — if one isn't, that Order Status was
 // set manually and was never actually confirmed by either courier.
-const STATUSES_EXPECTING_TRACKING = ["shipped", "out_for_delivery", "delivered", "completed"];
+const STATUSES_EXPECTING_TRACKING = [
+  "shipped",
+  "out_for_delivery",
+  "delivered",
+  "delivery_disputed",
+  "completed",
+];
 
 function courierStatusBadge(icon: string, rawStatus: string | null, syncedAt: string | null) {
   return (
@@ -241,6 +249,29 @@ function formatDateRange(from?: string, to?: string, preset?: string) {
   return "All dates";
 }
 
+function dubaiDateKey(value: string | Date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Dubai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(value));
+}
+
+function orderDayLabel(value: string) {
+  const orderKey = dubaiDateKey(value);
+  const today = new Date();
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  if (orderKey === dubaiDateKey(today)) return "Today";
+  if (orderKey === dubaiDateKey(yesterday)) return "Yesterday";
+  return new Date(value).toLocaleDateString("en-IN", {
+    timeZone: "Asia/Dubai",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+}
+
 function Stat({ title, value, accent }: { title: string; value: any; accent: string }) {
   return (
     <div
@@ -280,6 +311,9 @@ export default async function OrdersPage({
     shipments_returned?: string;
     sample_refs?: string;
     sample_unmatched?: string;
+    shadowfax_checked?: string;
+    shadowfax_matched?: string;
+    shadowfax_updated?: string;
     bulk_sync_error?: string;
   }>;
 }) {
@@ -288,6 +322,8 @@ export default async function OrdersPage({
 
   const isHiddenReview = params.show_hidden === "1";
   const isPaymentPendingView = params.view === "payment_pending" && !isHiddenReview;
+  const isDeliveredView = params.view === "delivered" && !isHiddenReview;
+  const isDeliveryIssuesView = params.view === "delivery_issues" && !isHiddenReview;
   const isAllView = params.view === "all" || isHiddenReview;
   // Only show the "All Orders"-only filter fields (Order Status, Coupon)
   // when actually in All Orders mode — in the hidden-orders review list
@@ -308,6 +344,9 @@ export default async function OrdersPage({
     "shipments_returned",
     "sample_refs",
     "sample_unmatched",
+    "shadowfax_checked",
+    "shadowfax_matched",
+    "shadowfax_updated",
     "bulk_sync_error",
   ];
   const returnToQuery = new URLSearchParams(
@@ -324,6 +363,8 @@ export default async function OrdersPage({
     { count: paymentPendingCount },
     { count: hiddenCount },
     { count: visibleTotalCount },
+    { count: deliveredCount },
+    { count: deliveryIssuesCount },
   ] = await Promise.all([
     supabase
       .from("orders")
@@ -339,6 +380,17 @@ export default async function OrdersPage({
       .in("shipping_status", UNSHIPPED_STATUSES),
     supabase.from("orders").select("*", { count: "exact", head: true }).eq("is_hidden", true),
     supabase.from("orders").select("*", { count: "exact", head: true }).eq("is_hidden", false),
+    supabase
+      .from("orders")
+      .select("*", { count: "exact", head: true })
+      .eq("is_hidden", false)
+      .eq("payment_status", "paid")
+      .in("shipping_status", ["delivered", "completed"]),
+    supabase
+      .from("orders")
+      .select("*", { count: "exact", head: true })
+      .eq("is_hidden", false)
+      .eq("shipping_status", "delivery_disputed"),
   ]);
 
   // ------------------------------------------------------------------
@@ -370,10 +422,9 @@ export default async function OrdersPage({
   // Table query — respects the active tab + filters.
   // ------------------------------------------------------------------
 
-  // The active paid work queue is FIFO (oldest first). History and unpaid
-  // views remain newest first because those are primarily for lookup.
-  const oldestFirst = !isHiddenReview && !isPaymentPendingView && !isAllView;
-  let query = supabase.from("orders").select("*").order("created_at", { ascending: oldestFirst }).limit(300);
+  // Today is shown first, followed by yesterday and older work. Age remains
+  // visible so old paid orders cannot disappear inside the queue.
+  let query = supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(300);
 
   if (isHiddenReview) {
     query = query.eq("is_hidden", true);
@@ -388,16 +439,19 @@ export default async function OrdersPage({
       // a server webhook — see conversation history). That's a stale field
       // to go fix, not a live abandoned checkout to chase down.
       query = query.in("payment_status", UNPAID_STATUSES).in("shipping_status", UNSHIPPED_STATUSES);
+    } else if (isDeliveredView) {
+      query = query.eq("payment_status", "paid").in("shipping_status", ["delivered", "completed"]);
+    } else if (isDeliveryIssuesView) {
+      query = query.eq("shipping_status", "delivery_disputed");
     } else if (isAllView) {
       if (params.shipping) {
         query = query.eq("shipping_status", params.shipping);
       }
     } else {
-      // Needs Action = actually needs fulfillment work. Orders whose
-      // payment never completed aren't real sales yet — see
-      // UNPAID_STATUSES above — so they're excluded here and shown in the
-      // separate Payment Pending tab instead.
-      query = query.in("shipping_status", UNSHIPPED_STATUSES).eq("payment_status", "paid");
+      // Operations view: load paid orders, then retain all of today and
+      // yesterday plus any older order that still needs fulfilment. This
+      // keeps recent work understandable without losing an old backlog.
+      query = query.eq("payment_status", "paid");
     }
   }
 
@@ -427,7 +481,14 @@ export default async function OrdersPage({
 
   const { data: rawOrders, error } = await query;
 
-  const orders = rawOrders || [];
+  const orders = !isAllView && !isHiddenReview && !isPaymentPendingView && !isDeliveredView && !isDeliveryIssuesView
+    ? (rawOrders || []).filter((order: any) => {
+        const day = dubaiDateKey(order.created_at);
+        const today = dubaiDateKey(new Date());
+        const yesterday = dubaiDateKey(new Date(Date.now() - 24 * 60 * 60 * 1000));
+        return day === today || day === yesterday || UNSHIPPED_STATUSES.includes(order.shipping_status);
+      })
+    : rawOrders || [];
 
   if (error) {
     return (
@@ -498,6 +559,10 @@ export default async function OrdersPage({
     ? "/orders?show_hidden=1"
     : isAllView
     ? "/orders?view=all"
+    : isDeliveredView
+    ? "/orders?view=delivered"
+    : isDeliveryIssuesView
+    ? "/orders?view=delivery_issues"
     : isPaymentPendingView
     ? "/orders?view=payment_pending"
     : "/orders";
@@ -506,9 +571,13 @@ export default async function OrdersPage({
     ? "Test and spam records kept out of the live workflow."
     : isPaymentPendingView
     ? "Unpaid checkouts that have not entered fulfillment."
+    : isDeliveredView
+    ? "Confirmed delivered orders. Search by customer name, phone number, email or order number."
+    : isDeliveryIssuesView
+    ? "Customers who reported non-receipt even though the courier may show delivered. Resolve these before closing them."
     : isAllView
     ? "Search and audit the complete order history."
-    : "Paid orders ready for your team, with the oldest order first.";
+    : "All paid orders from today and yesterday, followed by any older order still waiting for fulfilment.";
 
   return (
     <main className={styles.page}>
@@ -543,12 +612,11 @@ export default async function OrdersPage({
           ) : (
             <>
               <div>
-                Checked {params.checked} order{params.checked === "1" ? "" : "s"} missing tracking against
-                Delhivery by Order ID — Delhivery returned {params.shipments_returned || 0} shipment
-                {params.shipments_returned === "1" ? "" : "s"} total, matched {params.matched}, updated{" "}
-                {params.updated}.
+                Courier sync complete. Delhivery checked {params.checked}, matched {params.matched}, updated{" "}
+                {params.updated}. Shadowfax checked {params.shadowfax_checked || 0}, matched{" "}
+                {params.shadowfax_matched || 0}, updated {params.shadowfax_updated || 0}.
                 {Number(params.unmatched) > 0 && (
-                  <> {params.unmatched} had no matching shipment in Delhivery.</>
+                  <> {params.unmatched} Delhivery order{params.unmatched === "1" ? "" : "s"} could not be matched.</>
                 )}
               </div>
 
@@ -589,9 +657,9 @@ export default async function OrdersPage({
         <span className={styles.queueLabel}>Work queue</span>
         <Link
           href={tabHref({})}
-          style={tabStyle(!isAllView && !isHiddenReview && !isPaymentPendingView)}
+          style={tabStyle(!isAllView && !isHiddenReview && !isPaymentPendingView && !isDeliveredView && !isDeliveryIssuesView)}
         >
-          ✅ Paid — Ready to fulfil ({needsActionCount || 0})
+          Operations — Paid ({needsActionCount || 0} ready)
         </Link>
         <Link
           href={tabHref({ view: "payment_pending" })}
@@ -601,6 +669,12 @@ export default async function OrdersPage({
         </Link>
         <Link href={tabHref({ view: "all" })} style={tabStyle(isAllView && !isHiddenReview)}>
           All Orders ({visibleTotalCount || 0})
+        </Link>
+        <Link href={tabHref({ view: "delivered" })} style={tabStyle(isDeliveredView)}>
+          Delivered ({deliveredCount || 0})
+        </Link>
+        <Link href={tabHref({ view: "delivery_issues" })} style={tabStyle(isDeliveryIssuesView, true)}>
+          ⚠ Delivery issues ({deliveryIssuesCount || 0})
         </Link>
         <div className={styles.queueSpacer} />
         <form
@@ -662,6 +736,7 @@ export default async function OrdersPage({
               <option value="shipped">Shipped</option>
               <option value="out_for_delivery">Out for delivery</option>
               <option value="delivered">Delivered</option>
+              <option value="delivery_disputed">Delivery issue — not received</option>
               <option value="completed">Completed</option>
               <option value="cancelled">Cancelled</option>
               <option value="return_requested">Return requested</option>
@@ -742,16 +817,27 @@ export default async function OrdersPage({
             </thead>
 
             <tbody>
-              {orders.map((order: any) => {
+              {orders.map((order: any, index: number) => {
                 const whatsappPhone = normalizePhone(order.customer_phone || "");
                 const customerOrderCount = customerOrderCounts.get(whatsappPhone) || 0;
                 const codPending =
                   order.payment_type === "partial_cod" && order.cod_balance_status === "pending";
 
+                const showDay = index === 0 || dubaiDateKey(order.created_at) !== dubaiDateKey(orders[index - 1].created_at);
+
                 return (
+                  <Fragment key={order.id}>
+                  {showDay && (
+                    <tr className={styles.dayDivider}>
+                      <td colSpan={9}>{orderDayLabel(order.created_at)}</td>
+                    </tr>
+                  )}
                   <tr
-                    key={order.id}
-                    style={order.is_hidden ? { opacity: 0.6, background: "#fafafa" } : undefined}
+                    style={order.is_hidden
+                      ? { opacity: 0.6, background: "#fafafa" }
+                      : order.shipping_status === "delivery_disputed"
+                      ? { background: "#fff7ed" }
+                      : undefined}
                   >
                     <td>
                       <Link href={`/orders/${order.id}`} className={styles.orderNumber}>
@@ -837,6 +923,7 @@ export default async function OrdersPage({
                       </div>
                     </td>
                   </tr>
+                  </Fragment>
                 );
               })}
 
@@ -847,9 +934,13 @@ export default async function OrdersPage({
                       ? "No test/hidden orders."
                       : isPaymentPendingView
                       ? "No unpaid orders right now — everything here has either completed payment or hasn't been created yet."
+                      : isDeliveredView
+                      ? "No delivered orders found."
+                      : isDeliveryIssuesView
+                      ? "No open delivery issues — good news."
                       : isAllView
                       ? "No orders found."
-                      : "The paid-order queue is clear. Open All Orders for history, or Awaiting Payment for incomplete checkouts."}
+                      : "No paid orders today or yesterday, and no older paid orders need fulfilment."}
                   </td>
                 </tr>
               )}

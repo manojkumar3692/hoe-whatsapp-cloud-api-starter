@@ -9,6 +9,7 @@ const STATUS_OPTIONS = [
   "shipped",
   "out_for_delivery",
   "delivered",
+  "delivery_disputed",
   "completed",
   "cancelled",
   "return_requested",
@@ -72,7 +73,7 @@ export default function OrderStatusQuickEdit({
       >
         {STATUS_OPTIONS.map((s) => (
           <option key={s} value={s}>
-            {s.replaceAll("_", " ")}
+            {s === "delivery_disputed" ? "delivery issue — not received" : s.replaceAll("_", " ")}
           </option>
         ))}
       </select>

@@ -24,6 +24,7 @@ function StatusBadge({ value }: { value: string }) {
     shipped: { bg: "#e0e7ff", color: "#3730a3" },
     out_for_delivery: { bg: "#fce7f3", color: "#9d174d" },
     delivered: { bg: "#dcfce7", color: "#166534" },
+    delivery_disputed: { bg: "#fee2e2", color: "#991b1b" },
     completed: { bg: "#dcfce7", color: "#166534" },
     rejected: { bg: "#fee2e2", color: "#991b1b" },
     return_requested: { bg: "#ffedd5", color: "#9a3412" },
@@ -189,7 +190,9 @@ export default async function OrderDetailPage({
           )}
           {!order.delhivery_waybill &&
             !order.shadowfax_waybill &&
-            ["shipped", "out_for_delivery", "delivered", "completed"].includes(order.shipping_status) && (
+            ["shipped", "out_for_delivery", "delivered", "delivery_disputed", "completed"].includes(
+              order.shipping_status
+            ) && (
               <span
                 title="Order Status says this shipped, but no courier waybill (Delhivery or Shadowfax) was ever attached — that status was set manually and isn't confirmed by either courier. Add an AWB number below to start tracking it for real."
                 style={{
@@ -318,9 +321,14 @@ export default async function OrderDetailPage({
         <div style={{ fontSize: 12, color: "#999", marginTop: -8, marginBottom: 12 }}>
           This is your own fulfillment stage — it defaults to pending and only moves forward
           automatically as Delhivery or Shadowfax confirms progress. If you set it to cancelled
-          (or returned/refunded/rejected), it stays that way permanently — future courier syncs
+          (or delivery issue/returned/refunded/rejected), it stays that way permanently — future courier syncs
           will never overwrite it. See the Delivery Status sections below for each courier's own
           live status.
+        </div>
+        <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 10, padding: 12, fontSize: 13, color: "#9a3412", marginBottom: 14 }}>
+          If the courier says <b>Delivered</b> but the customer says it was not received, change
+          Order Status to <b>Delivery issue — customer says not received</b> and add what the
+          customer told you in the status note. The courier result and AWB remain visible below.
         </div>
         <Info
           label="Tracking URL"
@@ -561,6 +569,7 @@ export default async function OrderDetailPage({
                 <option value="shipped">shipped</option>
                 <option value="out_for_delivery">out_for_delivery</option>
                 <option value="delivered">delivered</option>
+                <option value="delivery_disputed">delivery issue — customer says not received</option>
                 <option value="completed">completed</option>
                 <option value="cancelled">cancelled</option>
                 <option value="return_requested">return_requested</option>
