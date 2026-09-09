@@ -53,11 +53,16 @@ export async function POST(req: NextRequest) {
     // Log to the order timeline whenever the status actually changed, or the
     // admin left a note on this update (even without changing the status).
     const statusChanged = existingOrder && existingOrder.shipping_status !== shippingStatus;
-    if (statusChanged || statusNote) {
+    const historyNote =
+      statusNote ||
+      (statusChanged && shippingStatus === "delivery_disputed"
+        ? "Customer reported order not received"
+        : "");
+    if (statusChanged || historyNote) {
       await supabase.from("order_status_history").insert({
         order_id: id,
         status: shippingStatus,
-        note: statusNote || null,
+        note: historyNote || null,
       });
     }
 

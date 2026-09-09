@@ -137,10 +137,13 @@ export function mapDelhiveryStatus(rawStatus: string): string | null {
   if (!s) return null;
 
   if (s.includes("out for delivery")) return "out_for_delivery";
-  if (s.includes("deliver")) return "delivered";
+  // Delhivery can report "RTO Delivered", meaning returned to seller—not
+  // delivered to the customer. "Undelivered" is also not completion.
   if (s.includes("rto") || s.includes("return")) return "returned";
   if (s.includes("cancel")) return "cancelled";
   if (s.includes("lost")) return "cancelled";
+  if (s.includes("undeliver") || s.includes("not delivered") || s.includes("delivery attempted")) return null;
+  if (/\bdelivered\b/.test(s)) return "delivered";
   if (s.includes("transit") || s.includes("dispatch") || s.includes("pickedup") || s.includes("picked up")) {
     return "shipped";
   }

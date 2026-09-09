@@ -23,7 +23,13 @@ export const ORDER_STATUS_FORWARD_SEQUENCE = [
   "completed",
 ];
 
-export const ORDER_STATUS_ADMIN_LOCKED = ["cancelled", "returned", "refunded", "rejected"];
+export const ORDER_STATUS_ADMIN_LOCKED = [
+  "cancelled",
+  "delivery_disputed",
+  "returned",
+  "refunded",
+  "rejected",
+];
 
 // Once an order reaches one of these, there's nothing left to track for
 // ANY courier — don't keep spending API calls checking on it.
