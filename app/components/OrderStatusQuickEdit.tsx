@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 const STATUS_OPTIONS = [
   "pending",
@@ -17,11 +17,10 @@ const STATUS_OPTIONS = [
   "rejected",
 ];
 
-const PASSWORD_STORAGE_KEY = "hoe_admin_password";
-
 // Quick-edit dropdown for the orders list — picks a new status and submits
-// immediately, no need to open the order detail page for a simple status
-// change. Re-submits the order's existing payment_status / tracking_url /
+// immediately. The app login already protects this action, so operations
+// staff do not have to enter the admin password again. Re-submits the
+// order's existing payment_status / tracking_url /
 // notes unchanged (the update route overwrites those fields with whatever
 // it receives, so they have to be included here or they'd get wiped).
 export default function OrderStatusQuickEdit({
@@ -40,24 +39,15 @@ export default function OrderStatusQuickEdit({
   returnTo: string;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
-  const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    const saved = window.localStorage.getItem(PASSWORD_STORAGE_KEY);
-    if (saved) setPassword(saved);
-  }, []);
 
   return (
     <form
       ref={formRef}
       action="/api/orders/update"
       method="POST"
-      style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 150 }}
-      onSubmit={() => {
-        if (password) window.localStorage.setItem(PASSWORD_STORAGE_KEY, password);
-        setSaving(true);
-      }}
+      style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 145 }}
+      onSubmit={() => setSaving(true)}
     >
       <input type="hidden" name="id" value={orderId} />
       <input type="hidden" name="payment_status" value={paymentStatus} />
@@ -73,35 +63,21 @@ export default function OrderStatusQuickEdit({
         style={{
           padding: "6px 8px",
           borderRadius: 8,
-          border: "1px solid #ddd",
-          fontSize: 12,
+          border: "1px solid #d9cdbb",
+          fontSize: 13,
           fontWeight: 700,
-          background: saving ? "#f3f4f6" : "#fff",
+          color: "#1c1712",
+          background: saving ? "#f3f4f6" : "#fffdf9",
         }}
       >
         {STATUS_OPTIONS.map((s) => (
           <option key={s} value={s}>
-            {s}
+            {s.replaceAll("_", " ")}
           </option>
         ))}
       </select>
 
-      <input
-        type="password"
-        name="admin_password"
-        placeholder="Admin password"
-        required
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        style={{
-          padding: "4px 6px",
-          borderRadius: 6,
-          border: "1px solid #eee",
-          fontSize: 11,
-          width: "100%",
-          boxSizing: "border-box",
-        }}
-      />
+      <span style={{ color: "#958879", fontSize: 10 }}>{saving ? "Saving…" : "Change status"}</span>
     </form>
   );
 }

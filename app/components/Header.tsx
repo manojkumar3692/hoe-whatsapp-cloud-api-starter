@@ -3,6 +3,7 @@ import Link from "next/link";
 export const NAV_ITEMS: { key: string; label: string; href: string }[] = [
   { key: "home", label: "Home", href: "/" },
   { key: "orders", label: "Orders", href: "/orders" },
+  { key: "inventory", label: "Inventory", href: "/inventory" },
   { key: "customers", label: "Customers", href: "/customers" },
   { key: "abandoned-carts", label: "Abandoned Carts", href: "/abandoned-carts" },
   { key: "campaigns", label: "Campaigns", href: "/campaigns" },

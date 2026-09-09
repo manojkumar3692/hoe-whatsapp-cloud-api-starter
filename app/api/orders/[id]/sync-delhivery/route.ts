@@ -10,12 +10,6 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const form = await req.formData();
-
-  if (form.get("admin_password") !== process.env.ADMIN_PASSWORD) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const result = await syncOrderDelhiveryStatus(id);
 
   if (result.error) {
