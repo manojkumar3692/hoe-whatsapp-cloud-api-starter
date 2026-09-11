@@ -1,0 +1,24 @@
+# Background courier tracking refresh. GitHub Actions is used because the
+# Vercel Hobby plan cannot schedule jobs every 10 minutes.
+#
+# Required repository secrets:
+#   APP_BASE_URL  e.g. https://your-production-domain.com (no trailing slash)
+#   CRON_SECRET   same value configured in the deployed app
+
+name: Courier Tracking Sync
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refresh Delhivery and Shadowfax tracking
+        run: |
+          curl -sS -f -X GET \
+            "${{ secrets.APP_BASE_URL }}/api/orders/background-sync" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+

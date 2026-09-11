@@ -62,6 +62,12 @@ export default async function CustomerDetailPage({
     .eq("customer_phone", customer.phone)
     .order("created_at", { ascending: false });
 
+  const { data: followups } = await supabase
+    .from("customer_followups")
+    .select("id,order_id,status,followup_type,due_at,next_action,rating")
+    .eq("customer_id", customer.id)
+    .order("created_at", { ascending: false });
+
   const revenue =
     orders?.reduce((sum: number, o: any) => sum + (o.amount_in_paise || 0), 0) || 0;
 
@@ -146,6 +152,17 @@ export default async function CustomerDetailPage({
             <div style={{ color: "#777", fontSize: 12, marginTop: 4 }}>
               {new Date(m.created_at).toLocaleString()} • {m.status}
             </div>
+          </div>
+        ))}
+      </section>
+
+      <section style={{ ...card, marginTop: 16 }}>
+        <h2>Post-delivery Follow-ups</h2>
+        {(followups || []).length === 0 && <p style={{ color: "#777" }}>No follow-ups yet.</p>}
+        {(followups || []).map((f: any) => (
+          <div key={f.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "10px 0", borderBottom: "1px solid #eee" }}>
+            <div><b>{f.followup_type === "trial_pack" ? "Trial Pack" : "Regular Purchase"}</b><div style={{ color: "#777", fontSize: 12, marginTop: 3 }}>{f.status.replaceAll("_", " ")} · Due {new Date(f.due_at).toLocaleString()}{f.rating ? ` · ${f.rating}/5` : ""}</div></div>
+            <Link href={`/follow-ups/${f.id}`}>Open</Link>
           </div>
         ))}
       </section>

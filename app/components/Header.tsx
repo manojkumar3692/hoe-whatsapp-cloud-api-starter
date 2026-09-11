@@ -5,6 +5,7 @@ export const NAV_ITEMS: { key: string; label: string; href: string }[] = [
   { key: "orders", label: "Orders", href: "/orders" },
   { key: "inventory", label: "Inventory", href: "/inventory" },
   { key: "customers", label: "Customers", href: "/customers" },
+  { key: "follow-ups", label: "Follow-ups", href: "/follow-ups" },
   { key: "abandoned-carts", label: "Abandoned Carts", href: "/abandoned-carts" },
   { key: "campaigns", label: "Campaigns", href: "/campaigns" },
   { key: "campaign-history", label: "Campaign History", href: "/campaign-history" },

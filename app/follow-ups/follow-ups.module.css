@@ -1,0 +1,33 @@
+.page { min-height: 100vh; background: #faf8f4; padding: 24px; color: #1c1712; }
+.heading { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 20px; }
+.heading h1 { margin: 0 0 5px; font-size: 32px; }
+.heading p { margin: 0; color: #756b5f; }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+.stat { background: white; border: 1px solid #eadfce; border-radius: 14px; padding: 16px; }
+.stat span { display: block; color: #85796b; font-size: 12px; }
+.stat strong { display: block; font-size: 27px; margin-top: 5px; }
+.workspace { background: white; border: 1px solid #eadfce; border-radius: 16px; overflow: hidden; }
+.tabs { display: flex; gap: 7px; padding: 14px; flex-wrap: wrap; border-bottom: 1px solid #eee5d8; }
+.tab { padding: 7px 11px; border-radius: 999px; color: #655b50; text-decoration: none; font-size: 13px; border: 1px solid #e7dccd; }
+.active { background: #1c1712; color: white; border-color: #1c1712; }
+.filters { display: grid; grid-template-columns: minmax(240px, 2fr) 1fr auto; gap: 10px; padding: 14px; border-bottom: 1px solid #eee5d8; }
+.filters input, .filters select { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #d9cdbb; border-radius: 9px; background: #fffdf9; }
+.filters button { padding: 10px 18px; border: 0; border-radius: 9px; background: #1c1712; color: white; font-weight: 700; }
+.tableWrap { overflow-x: auto; }
+.table { width: 100%; border-collapse: collapse; min-width: 1050px; }
+.table th { text-align: left; color: #74695d; font-size: 12px; padding: 12px; border-bottom: 1px solid #e8ded0; background: #fffcf8; }
+.table td { padding: 13px 12px; border-bottom: 1px solid #f1ebe3; vertical-align: top; font-size: 13px; }
+.name { font-weight: 750; color: #1c1712; text-decoration: none; }
+.subtle { color: #897e72; font-size: 12px; margin-top: 4px; }
+.badge { display: inline-block; padding: 5px 9px; border-radius: 999px; font-size: 11px; font-weight: 750; white-space: nowrap; }
+.actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.action { display: inline-block; padding: 7px 10px; border: 1px solid #d9cdbb; border-radius: 8px; color: #443c34; background: white; text-decoration: none; font-size: 12px; font-weight: 700; cursor: pointer; }
+.call { background: #166534; border-color: #166534; color: white; }
+.empty { padding: 40px; text-align: center; color: #817669; }
+.overdue { color: #b91c1c; font-weight: 700; }
+@media (max-width: 850px) {
+  .page { padding: 14px; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .filters { grid-template-columns: 1fr; }
+}
+

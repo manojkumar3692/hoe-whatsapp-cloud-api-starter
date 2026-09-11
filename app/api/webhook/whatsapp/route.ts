@@ -103,6 +103,35 @@ export async function POST(req: NextRequest) {
             meta_message_id: messageId,
             raw_response: msg,
           });
+
+          // Surface a reply in the latest open post-delivery follow-up too.
+          if (customerId) {
+            const { data: openFollowup } = await supabase
+              .from("customer_followups")
+              .select("id")
+              .eq("customer_id", customerId)
+              .in("status", ["due", "call_later", "awaiting_reply", "interested"])
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            if (openFollowup) {
+              await supabase.from("customer_followup_attempts").insert({
+                followup_id: openFollowup.id,
+                method: "whatsapp",
+                result: "customer_replied",
+                notes: textBody,
+              });
+              await supabase
+                .from("customer_followups")
+                .update({
+                  status: "in_progress",
+                  next_action_at: new Date().toISOString(),
+                  next_action: "Review the customer's WhatsApp reply and record feedback",
+                })
+                .eq("id", openFollowup.id);
+            }
+          }
         }
 
         // Delivery/read/failed status updates
