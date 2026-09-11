@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "./supabaseAdmin";
-import { trackWaybills, trackByReferenceNumbersRaw, mapDelhiveryStatus, DelhiveryShipment } from "./delhivery";
+import { trackWaybills, trackByReferenceNumbersRaw, deriveDelhiveryShipmentStatus, DelhiveryShipment } from "./delhivery";
 import { ORDER_STATUS_ADMIN_LOCKED, SYNC_TERMINAL_STATUSES, shouldAdvanceOrderStatus } from "./orderStatusSync";
 
 // Once an order reaches one of these, there's nothing left to track —
@@ -44,11 +44,20 @@ export type DelhiverySyncResult = {
 // both the single-order sync and the bulk by-reference-number sync.
 async function applyShipmentToOrder(
   supabase: ReturnType<typeof supabaseAdmin>,
-  order: { id: string; shipping_status: string; delhivery_waybill: string | null },
+  order: {
+    id: string;
+    shipping_status: string;
+    payment_status: string;
+    payment_type: string;
+    cod_balance_status: string;
+    delhivery_waybill: string | null;
+    delhivery_last_status_raw?: string | null;
+  },
   shipment: DelhiveryShipment
 ): Promise<DelhiverySyncResult> {
-  const rawStatus = shipment.Status?.Status || "";
-  const mappedStatus = mapDelhiveryStatus(rawStatus);
+  const effective = deriveDelhiveryShipmentStatus(shipment);
+  const rawStatus = effective.rawStatus;
+  const mappedStatus = effective.mappedStatus;
   const now = new Date().toISOString();
 
   const updatePayload: any = {
@@ -56,6 +65,13 @@ async function applyShipmentToOrder(
     delhivery_last_synced_at: now,
     updated_at: now,
   };
+
+  const completesCod = mappedStatus === "delivered"
+    && order.payment_status === "paid"
+    && order.payment_type === "partial_cod"
+    && order.cod_balance_status === "pending";
+  const targetStatus = completesCod ? "completed" : mappedStatus;
+  if (completesCod) updatePayload.cod_balance_status = "collected";
 
   // Discovered a waybill for an order that didn't have one saved yet —
   // this is exactly the case where the order was only ever matched via
@@ -67,11 +83,11 @@ async function applyShipmentToOrder(
   }
 
   const statusChanged =
-    !!mappedStatus &&
-    mappedStatus !== order.shipping_status &&
-    shouldAdvanceOrderStatus(order.shipping_status, mappedStatus);
+    !!targetStatus &&
+    targetStatus !== order.shipping_status &&
+    shouldAdvanceOrderStatus(order.shipping_status, targetStatus);
   if (statusChanged) {
-    updatePayload.shipping_status = mappedStatus;
+    updatePayload.shipping_status = targetStatus;
   }
 
   const { error: updateError } = await supabase.from("orders").update(updatePayload).eq("id", order.id);
@@ -80,10 +96,12 @@ async function applyShipmentToOrder(
     return { synced: false, statusChanged: false, error: updateError.message };
   }
 
-  const locationSuffix = shipment.Status?.StatusLocation ? ` at ${shipment.Status.StatusLocation}` : "";
+  const locationSuffix = effective.location ? ` at ${effective.location}` : "";
   const waybillSuffix = waybillBackfilled ? ` (waybill ${shipment.AWB} matched via order ID)` : "";
   let historyNote: string;
-  if (statusChanged) {
+  if (completesCod && statusChanged) {
+    historyNote = `Synced from Delhivery: "${rawStatus}"${locationSuffix}${waybillSuffix} — COD balance assumed collected and order completed`;
+  } else if (statusChanged) {
     historyNote = `Synced from Delhivery: "${rawStatus}"${locationSuffix}${waybillSuffix}`;
   } else if (mappedStatus && ORDER_STATUS_ADMIN_LOCKED.includes(order.shipping_status)) {
     historyNote = `Delivery Status updated to "${rawStatus}"${locationSuffix}${waybillSuffix} — Order Status left as "${order.shipping_status}" (admin-set, not overridden)`;
@@ -93,16 +111,21 @@ async function applyShipmentToOrder(
     historyNote = `Delivery Status updated to "${rawStatus}"${locationSuffix}${waybillSuffix} — not auto-mapped to an Order Status, review manually`;
   }
 
-  await supabase.from("order_status_history").insert({
-    order_id: order.id,
-    status: statusChanged ? mappedStatus! : order.shipping_status,
-    note: historyNote,
-  });
+  // Automatic Orders-page refreshes run frequently. Only add timeline
+  // history when something meaningful changed, rather than one identical
+  // entry on every page visit.
+  if (statusChanged || waybillBackfilled || order.delhivery_last_status_raw !== rawStatus) {
+    await supabase.from("order_status_history").insert({
+      order_id: order.id,
+      status: statusChanged ? targetStatus! : order.shipping_status,
+      note: historyNote,
+    });
+  }
 
   return {
     synced: true,
     statusChanged,
-    newStatus: statusChanged ? mappedStatus! : order.shipping_status,
+    newStatus: statusChanged ? targetStatus! : order.shipping_status,
     rawStatus,
     syncedAt: now,
   };
@@ -117,7 +140,7 @@ export async function syncOrderDelhiveryStatus(orderId: string): Promise<Delhive
 
   const { data: order, error: orderError } = await supabase
     .from("orders")
-    .select("id, shipping_status, delhivery_waybill")
+    .select("id, shipping_status, payment_status, payment_type, cod_balance_status, delhivery_waybill, delhivery_last_status_raw")
     .eq("id", orderId)
     .maybeSingle();
 
@@ -178,7 +201,7 @@ function normalizeRef(s: string): string {
 // unmatchedOrderNumbers so you know which still need attention. Matching is
 // case/whitespace-insensitive since Delhivery's own dashboard input isn't
 // guaranteed to preserve exact casing.
-export async function bulkSyncOrdersByOrderNumber(): Promise<BulkReferenceSyncResult> {
+export async function bulkSyncOrdersByOrderNumber(options: { staleOnly?: boolean } = {}): Promise<BulkReferenceSyncResult> {
   const supabase = supabaseAdmin();
 
   // First refresh orders that already have a Delhivery AWB. The old bulk
@@ -186,7 +209,7 @@ export async function bulkSyncOrdersByOrderNumber(): Promise<BulkReferenceSyncRe
   // could never become delivered from the Orders page.
   const { data: trackedCandidates, error: trackedFetchError } = await supabase
     .from("orders")
-    .select("id, order_number, shipping_status, delhivery_waybill")
+    .select("id, order_number, shipping_status, payment_status, payment_type, cod_balance_status, delhivery_waybill, delhivery_last_status_raw, delhivery_last_synced_at")
     .eq("is_hidden", false)
     .not("delhivery_waybill", "is", null);
 
@@ -204,7 +227,7 @@ export async function bulkSyncOrdersByOrderNumber(): Promise<BulkReferenceSyncRe
 
   const { data: candidates, error: fetchError } = await supabase
     .from("orders")
-    .select("id, order_number, shipping_status, delhivery_waybill")
+    .select("id, order_number, shipping_status, payment_status, payment_type, cod_balance_status, delhivery_waybill, delhivery_last_status_raw, delhivery_last_synced_at")
     .eq("is_hidden", false)
     .is("delhivery_waybill", null)
     .not("shipping_status", "in", `(${SYNC_TERMINAL_STATUSES.join(",")})`)
@@ -216,10 +239,13 @@ export async function bulkSyncOrdersByOrderNumber(): Promise<BulkReferenceSyncRe
     return { checked: 0, matched: 0, updated: 0, unmatchedOrderNumbers: [], ...emptyDiagnostics, error: fetchError.message };
   }
 
-  const orders = candidates || [];
+  const staleCutoff = Date.now() - AUTO_SYNC_STALE_AFTER_MS;
+  const isStale = (value: string | null | undefined) => !value || new Date(value).getTime() < staleCutoff;
+  const orders = (candidates || []).filter((order) => !options.staleOnly || isStale(order.delhivery_last_synced_at));
   const allTrackedOrders = trackedCandidates || [];
   const trackedOrders = allTrackedOrders.filter(
     (order) => !SYNC_TERMINAL_STATUSES.includes(order.shipping_status)
+      && (!options.staleOnly || isStale(order.delhivery_last_synced_at))
   );
   const awbUseCount = new Map<string, number>();
   for (const order of allTrackedOrders) {
@@ -242,20 +268,26 @@ export async function bulkSyncOrdersByOrderNumber(): Promise<BulkReferenceSyncRe
       const batch = trackedOrders.slice(i, i + BATCH_SIZE);
       const shipments = await trackWaybills(batch.map((o) => o.delhivery_waybill!));
 
-      for (const order of batch) {
-        if ((awbUseCount.get(order.delhivery_waybill!) || 0) > 1) {
-          unmatchedOrderNumbers.push(`${order.order_number} (duplicate AWB)`);
-          continue;
-        }
+      await Promise.all(batch.map(async (order) => {
         const shipment = shipments[order.delhivery_waybill!];
         if (!shipment) {
           unmatchedOrderNumbers.push(order.order_number);
-          continue;
+          return;
+        }
+
+        // The same AWB can accidentally be saved on multiple checkout/order
+        // rows. Do not skip the real order when Delhivery gives us an exact
+        // ReferenceNo tie-breaker; update only the row whose order number
+        // matches that reference and leave the other duplicate untouched.
+        if ((awbUseCount.get(order.delhivery_waybill!) || 0) > 1
+          && normalizeRef(shipment.ReferenceNo || "") !== normalizeRef(order.order_number)) {
+          unmatchedOrderNumbers.push(`${order.order_number} (duplicate AWB; reference belongs to ${shipment.ReferenceNo || "another order"})`);
+          return;
         }
         matched++;
         const result = await applyShipmentToOrder(supabase, order, shipment);
         if (result.synced) updated++;
-      }
+      }));
     }
 
     for (let i = 0; i < orders.length; i += BATCH_SIZE) {
@@ -274,16 +306,21 @@ export async function bulkSyncOrdersByOrderNumber(): Promise<BulkReferenceSyncRe
         if (s.ReferenceNo) byNormalizedRefNo[normalizeRef(s.ReferenceNo)] = s;
       }
 
-      for (const order of batch) {
+      await Promise.all(batch.map(async (order) => {
         const shipment = byNormalizedRefNo[normalizeRef(order.order_number)];
         if (!shipment) {
           unmatchedOrderNumbers.push(order.order_number);
-          continue;
+          // Throttle automatic reference lookups for unmanifested orders too.
+          // A manual "Sync all tracking" still bypasses this freshness check.
+          if (options.staleOnly) {
+            await supabase.from("orders").update({ delhivery_last_synced_at: new Date().toISOString() }).eq("id", order.id);
+          }
+          return;
         }
         matched++;
         const result = await applyShipmentToOrder(supabase, order, shipment);
         if (result.synced) updated++;
-      }
+      }));
     }
   } catch (e: any) {
     return {

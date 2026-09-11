@@ -138,6 +138,12 @@ export default async function OrderDetailPage({
     .eq("order_id", id)
     .order("created_at", { ascending: false });
 
+  const { data: followup } = await supabase
+    .from("customer_followups")
+    .select("id,status,due_at,next_action,feedback_outcome,rating")
+    .eq("order_id", id)
+    .maybeSingle();
+
   return (
     <main style={{ padding: 24, background: "#fafafa", minHeight: "100vh" }}>
       <Header active="orders" back={{ href: "/orders", label: "Orders" }} />
@@ -344,6 +350,19 @@ export default async function OrderDetailPage({
         />
         <Info label="Notes" value={order.notes || "-"} />
       </section>
+
+      {followup && (
+        <section style={{ ...card, marginTop: 16 }}>
+          <h2>Customer Follow-up</h2>
+          <Info label="Status" value={followup.status.replaceAll("_", " ")} />
+          <Info label="Due" value={new Date(followup.due_at).toLocaleString()} />
+          <Info label="Rating" value={followup.rating ? `${followup.rating} / 5` : "Not recorded"} />
+          <Info label="Next Action" value={followup.next_action || "Collect customer feedback"} />
+          <Link href={`/follow-ups/${followup.id}`} style={{ display: "inline-block", padding: "9px 14px", borderRadius: 8, background: "#1c1712", color: "#fff", textDecoration: "none", fontWeight: 700, fontSize: 13 }}>
+            Open Follow-up
+          </Link>
+        </section>
+      )}
 
       <section style={{ ...card, marginTop: 16 }}>
         <h2>Delivery Status (as per Delhivery)</h2>

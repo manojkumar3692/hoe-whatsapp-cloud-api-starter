@@ -4,6 +4,7 @@ import Header from "../components/Header";
 import OrderStatusQuickEdit from "../components/OrderStatusQuickEdit";
 import CopyButton from "../components/CopyButton";
 import HideOrderToggle from "../components/HideOrderToggle";
+import CourierRefresh from "../components/CourierRefresh";
 import { supabaseAdmin } from "../../lib/supabaseAdmin";
 import { parseCartItems, cartItemName } from "../../lib/cartItems";
 import { normalizePhone } from "../../lib/phone";
@@ -19,9 +20,9 @@ const UNSHIPPED_STATUSES = ["pending", "confirmed", "packed"];
 // one of these forever, and the "order" is really just an abandoned
 // checkout wearing an order_number. Nothing needs to be fulfilled until
 // payment_status flips to 'paid', so these are kept out of Needs Action
-// and shown in their own tab instead — see the "💳 Payment Pending" tab
+// and shown in their own recovery tab instead — see "Abandoned Checkouts"
 // below and lib/delhiverySync.ts-adjacent conversation history.
-const UNPAID_STATUSES = ["pending", "failed"];
+const ABANDONED_PAYMENT_STATUSES = ["pending", "failed"];
 
 function formatINR(paise: number) {
   return `₹${((paise || 0) / 100).toLocaleString("en-IN", {
@@ -46,6 +47,9 @@ function badge(value: string) {
     rejected: ["#fee2e2", "#991b1b"],
     return_requested: ["#ffedd5", "#9a3412"],
     returned: ["#e5e7eb", "#374151"],
+    "no payment": ["#fee2e2", "#991b1b"],
+    "payment failed": ["#fee2e2", "#991b1b"],
+    "cod pending": ["#ffedd5", "#9a3412"],
   };
 
   const [bg, color] = colors[value] || ["#f3f4f6", "#374151"];
@@ -321,7 +325,10 @@ export default async function OrdersPage({
   const supabase = supabaseAdmin();
 
   const isHiddenReview = params.show_hidden === "1";
-  const isPaymentPendingView = params.view === "payment_pending" && !isHiddenReview;
+  // Keep the old payment_pending URL working for bookmarked links, but use
+  // the accurate "abandoned payment" language everywhere in the UI.
+  const isAbandonedPaymentView = ["payment_pending", "abandoned_payment"].includes(params.view || "") && !isHiddenReview;
+  const isCodBalancePendingView = params.view === "cod_balance_pending" && !isHiddenReview;
   const isDeliveredView = params.view === "delivered" && !isHiddenReview;
   const isDeliveryIssuesView = params.view === "delivery_issues" && !isHiddenReview;
   const isAllView = params.view === "all" || isHiddenReview;
@@ -358,14 +365,7 @@ export default async function OrdersPage({
   // Tab badge counts — cheap, exact, independent of the 300-row cap below.
   // ------------------------------------------------------------------
 
-  const [
-    { count: needsActionCount },
-    { count: paymentPendingCount },
-    { count: hiddenCount },
-    { count: visibleTotalCount },
-    { count: deliveredCount },
-    { count: deliveryIssuesCount },
-  ] = await Promise.all([
+  const countsPromise = Promise.all([
     supabase
       .from("orders")
       .select("*", { count: "exact", head: true })
@@ -376,8 +376,16 @@ export default async function OrdersPage({
       .from("orders")
       .select("*", { count: "exact", head: true })
       .eq("is_hidden", false)
-      .in("payment_status", UNPAID_STATUSES)
+      .in("payment_status", ABANDONED_PAYMENT_STATUSES)
       .in("shipping_status", UNSHIPPED_STATUSES),
+    supabase
+      .from("orders")
+      .select("*", { count: "exact", head: true })
+      .eq("is_hidden", false)
+      .eq("payment_status", "paid")
+      .eq("payment_type", "partial_cod")
+      .eq("cod_balance_status", "pending")
+      .not("shipping_status", "in", "(cancelled,returned,refunded,rejected)"),
     supabase.from("orders").select("*", { count: "exact", head: true }).eq("is_hidden", true),
     supabase.from("orders").select("*", { count: "exact", head: true }).eq("is_hidden", false),
     supabase
@@ -398,25 +406,14 @@ export default async function OrdersPage({
   // independent of whichever tab/filters are currently active.
   // ------------------------------------------------------------------
 
-  const { data: statsOrders } = await supabase
+  const statsOrdersPromise = supabase
     .from("orders")
     .select(
-      "amount_in_paise, payment_status, shipping_status, payment_type, cod_balance_status, balance_due_in_paise, created_at"
+      "amount_in_paise, payment_status, shipping_status, payment_type, token_amount_in_paise, cod_balance_status, balance_due_in_paise, created_at"
     )
     .eq("is_hidden", false)
     .order("created_at", { ascending: false })
     .limit(300);
-
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-
-  const todayOrders = (statsOrders || []).filter((o: any) => new Date(o.created_at) >= todayStart);
-  const paidToday = todayOrders.filter((o: any) => o.payment_status === "paid");
-
-  const todayRevenue = todayOrders.reduce(
-    (sum: number, o: any) => (o.payment_status === "paid" ? sum + (o.amount_in_paise || 0) : sum),
-    0
-  );
 
   // ------------------------------------------------------------------
   // Table query — respects the active tab + filters.
@@ -431,14 +428,20 @@ export default async function OrdersPage({
   } else {
     query = query.eq("is_hidden", false);
 
-    if (isPaymentPendingView) {
+    if (isAbandonedPaymentView) {
       // Only orders that are BOTH unpaid AND still unshipped — if fulfillment
       // already moved past packed (shipped/delivered/etc.), payment was
       // confirmed some other way even though our payment_status field never
       // got updated (the storefront's payment callback is browser-only, not
       // a server webhook — see conversation history). That's a stale field
       // to go fix, not a live abandoned checkout to chase down.
-      query = query.in("payment_status", UNPAID_STATUSES).in("shipping_status", UNSHIPPED_STATUSES);
+      query = query.in("payment_status", ABANDONED_PAYMENT_STATUSES).in("shipping_status", UNSHIPPED_STATUSES);
+    } else if (isCodBalancePendingView) {
+      query = query
+        .eq("payment_status", "paid")
+        .eq("payment_type", "partial_cod")
+        .eq("cod_balance_status", "pending")
+        .not("shipping_status", "in", "(cancelled,returned,refunded,rejected)");
     } else if (isDeliveredView) {
       query = query.eq("payment_status", "paid").in("shipping_status", ["delivered", "completed"]);
     } else if (isDeliveryIssuesView) {
@@ -479,9 +482,45 @@ export default async function OrdersPage({
     );
   }
 
-  const { data: rawOrders, error } = await query;
+  const paidOrderCustomersPromise = supabase
+    .from("orders")
+    .select("customer_phone")
+    .eq("payment_status", "paid")
+    .limit(5000);
 
-  const orders = !isAllView && !isHiddenReview && !isPaymentPendingView && !isDeliveredView && !isDeliveryIssuesView
+  // All independent database reads run together. Previously these were four
+  // sequential Supabase round trips, making navigation wait even after the
+  // courier calls moved to the background.
+  const [
+    { data: rawOrders, error },
+    counts,
+    { data: statsOrders },
+    { data: paidOrderCustomers },
+  ] = await Promise.all([query, countsPromise, statsOrdersPromise, paidOrderCustomersPromise]);
+
+  const [
+    { count: needsActionCount },
+    { count: abandonedPaymentCount },
+    { count: codBalancePendingCount },
+    { count: hiddenCount },
+    { count: visibleTotalCount },
+    { count: deliveredCount },
+    { count: deliveryIssuesCount },
+  ] = counts;
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayOrders = (statsOrders || []).filter((o: any) => new Date(o.created_at) >= todayStart);
+  const paidToday = todayOrders.filter((o: any) => o.payment_status === "paid");
+  const todayCollected = todayOrders.reduce((sum: number, o: any) => {
+    if (o.payment_status !== "paid") return sum;
+    if (o.payment_type !== "partial_cod" || o.cod_balance_status === "collected") {
+      return sum + (o.amount_in_paise || 0);
+    }
+    return sum + (o.token_amount_in_paise || 0);
+  }, 0);
+
+  const orders = !isAllView && !isHiddenReview && !isAbandonedPaymentView && !isCodBalancePendingView && !isDeliveredView && !isDeliveryIssuesView
     ? (rawOrders || []).filter((order: any) => {
         const day = dubaiDateKey(order.created_at);
         const today = dubaiDateKey(new Date());
@@ -503,12 +542,6 @@ export default async function OrdersPage({
   // even if the separate customer-summary sync has not run yet, and avoids
   // treating abandoned/failed checkouts as repeat purchases.
   const customerOrderCounts = new Map<string, number>();
-  const { data: paidOrderCustomers } = await supabase
-    .from("orders")
-    .select("customer_phone")
-    .eq("payment_status", "paid")
-    .limit(5000);
-
   for (const paidOrder of paidOrderCustomers || []) {
     const phone = normalizePhone(paidOrder.customer_phone || "");
     if (phone) customerOrderCounts.set(phone, (customerOrderCounts.get(phone) || 0) + 1);
@@ -563,14 +596,18 @@ export default async function OrdersPage({
     ? "/orders?view=delivered"
     : isDeliveryIssuesView
     ? "/orders?view=delivery_issues"
-    : isPaymentPendingView
-    ? "/orders?view=payment_pending"
+    : isAbandonedPaymentView
+    ? "/orders?view=abandoned_payment"
+    : isCodBalancePendingView
+    ? "/orders?view=cod_balance_pending"
     : "/orders";
 
   const viewDescription = isHiddenReview
     ? "Test and spam records kept out of the live workflow."
-    : isPaymentPendingView
-    ? "Unpaid checkouts that have not entered fulfillment."
+    : isAbandonedPaymentView
+    ? "Checkout leads with no confirmed payment. Retarget them, but do not fulfil them as orders."
+    : isCodBalancePendingView
+    ? "Real partial-COD orders where the token was paid and the remaining balance must be collected on delivery."
     : isDeliveredView
     ? "Confirmed delivered orders. Search by customer name, phone number, email or order number."
     : isDeliveryIssuesView
@@ -647,9 +684,9 @@ export default async function OrdersPage({
 
       <div className={styles.stats}>
         <Stat title="Paid orders today" value={paidToday.length} accent="#059669" />
-        <Stat title="Revenue today" value={formatINR(todayRevenue)} accent="#2563eb" />
+        <Stat title="Collected today" value={formatINR(todayCollected)} accent="#2563eb" />
         <Stat title="Ready to fulfil" value={needsActionCount || 0} accent="#d97706" />
-        <Stat title="Awaiting payment" value={paymentPendingCount || 0} accent="#991b1b" />
+        <Stat title="Abandoned checkouts" value={abandonedPaymentCount || 0} accent="#991b1b" />
       </div>
 
       <section className={styles.workspace}>
@@ -657,15 +694,21 @@ export default async function OrdersPage({
         <span className={styles.queueLabel}>Work queue</span>
         <Link
           href={tabHref({})}
-          style={tabStyle(!isAllView && !isHiddenReview && !isPaymentPendingView && !isDeliveredView && !isDeliveryIssuesView)}
+          style={tabStyle(!isAllView && !isHiddenReview && !isAbandonedPaymentView && !isCodBalancePendingView && !isDeliveredView && !isDeliveryIssuesView)}
         >
           Operations — Paid ({needsActionCount || 0} ready)
         </Link>
         <Link
-          href={tabHref({ view: "payment_pending" })}
-          style={tabStyle(isPaymentPendingView, true)}
+          href={tabHref({ view: "abandoned_payment" })}
+          style={tabStyle(isAbandonedPaymentView, true)}
         >
-          Awaiting payment ({paymentPendingCount || 0})
+          Abandoned Checkouts ({abandonedPaymentCount || 0})
+        </Link>
+        <Link
+          href={tabHref({ view: "cod_balance_pending" })}
+          style={tabStyle(isCodBalancePendingView, true)}
+        >
+          COD Balance Pending ({codBalancePendingCount || 0})
         </Link>
         <Link href={tabHref({ view: "all" })} style={tabStyle(isAllView && !isHiddenReview)}>
           All Orders ({visibleTotalCount || 0})
@@ -677,23 +720,23 @@ export default async function OrdersPage({
           ⚠ Delivery issues ({deliveryIssuesCount || 0})
         </Link>
         <div className={styles.queueSpacer} />
-        <form
-          action="/api/orders/bulk-sync-delhivery"
-          method="POST"
-          className={styles.syncForm}
-          title="Looks up every order missing a waybill in Delhivery by Order Number (the reference you used when creating shipments in Delhivery One), and fills in tracking + status automatically on a match."
-        >
-          <input type="hidden" name="return_to" value={returnTo} />
-          <button
-            type="submit"
-          >
-            ↻ Sync all tracking
-          </button>
-        </form>
+        <CourierRefresh className={styles.syncForm} />
         <Link href={tabHref({ show_hidden: "1" })} style={tabStyle(isHiddenReview, true)}>
           🙈 Test/Hidden ({hiddenCount || 0})
         </Link>
       </div>
+
+      {isAbandonedPaymentView && (
+        <div style={{ margin: "0 14px 14px", padding: "12px 14px", borderRadius: 10, background: "#fff7ed", border: "1px solid #fed7aa", color: "#9a3412", fontSize: 13 }}>
+          <b>Recovery leads — no payment received.</b> These customers started checkout but no successful payment was recorded. Use WhatsApp to recover the sale; only move an order into fulfilment after payment is confirmed.
+        </div>
+      )}
+
+      {isCodBalancePendingView && (
+        <div style={{ margin: "0 14px 14px", padding: "12px 14px", borderRadius: 10, background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1d4ed8", fontSize: 13 }}>
+          <b>Confirmed COD orders.</b> The initial token was paid. The amount shown as due must be collected by the courier and then marked collected.
+        </div>
+      )}
 
       <details className={styles.filterPanel} open={hasFilters}>
         <summary>{hasFilters ? "Filters applied — open to change" : "Search or filter orders"}</summary>
@@ -821,7 +864,8 @@ export default async function OrdersPage({
                 const whatsappPhone = normalizePhone(order.customer_phone || "");
                 const customerOrderCount = customerOrderCounts.get(whatsappPhone) || 0;
                 const codPending =
-                  order.payment_type === "partial_cod" && order.cod_balance_status === "pending";
+                  order.payment_status === "paid" && order.payment_type === "partial_cod" && order.cod_balance_status === "pending";
+                const noPaymentConfirmed = ABANDONED_PAYMENT_STATUSES.includes(order.payment_status);
 
                 const showDay = index === 0 || dubaiDateKey(order.created_at) !== dubaiDateKey(orders[index - 1].created_at);
 
@@ -874,6 +918,7 @@ export default async function OrdersPage({
                     <td>{itemsPreview(order.items)}</td>
                     <td>
                       <span className={styles.amount}>{formatINR(order.amount_in_paise)}</span>
+                      {noPaymentConfirmed && <div className={styles.subtle}>Expected order value</div>}
                       {codPending && (
                         <div style={{ marginTop: 4 }}>
                           {badge("cod pending")}{" "}
@@ -884,18 +929,27 @@ export default async function OrdersPage({
                       )}
                     </td>
                     <td>
-                      {badge(order.payment_status)}
+                      {noPaymentConfirmed ? badge(order.payment_status === "failed" ? "payment failed" : "no payment") : badge(order.payment_status)}
                       <div>{paymentTypeTag(order.payment_type)}</div>
+                      {noPaymentConfirmed && (
+                        <div className={styles.subtle} style={{ color: "#991b1b" }}>
+                          {order.payment_type === "partial_cod" ? "Token not completed" : "Full payment not completed"}
+                        </div>
+                      )}
                     </td>
                     <td>
-                      <OrderStatusQuickEdit
-                        orderId={order.id}
-                        paymentStatus={order.payment_status}
-                        currentStatus={order.shipping_status}
-                        trackingUrl={order.tracking_url}
-                        notes={order.notes}
-                        returnTo={returnTo}
-                      />
+                      {isAbandonedPaymentView ? (
+                        <div><span style={{ color: "#991b1b", fontWeight: 800 }}>⛔ Do not fulfil</span><div className={styles.subtle}>Open order if payment was received elsewhere</div></div>
+                      ) : (
+                        <OrderStatusQuickEdit
+                          orderId={order.id}
+                          paymentStatus={order.payment_status}
+                          currentStatus={order.shipping_status}
+                          trackingUrl={order.tracking_url}
+                          notes={order.notes}
+                          returnTo={returnTo}
+                        />
+                      )}
                     </td>
                     <td>{deliveryStatusCell(order)}</td>
                     <td className={styles.date}>
@@ -907,16 +961,18 @@ export default async function OrdersPage({
                     <td>
                       <div className={styles.actions}>
                         <Link href={`/orders/${order.id}`} className={styles.actionLink}>Open</Link>
-                        <a href={`/api/orders/${order.id}/invoice`} title="Download invoice" className={`${styles.actionLink} ${styles.iconLink}`}>
-                          📄
-                        </a>
+                        {!noPaymentConfirmed && (
+                          <a href={`/api/orders/${order.id}/invoice`} title="Download invoice" className={`${styles.actionLink} ${styles.iconLink}`}>
+                            📄
+                          </a>
+                        )}
                         {whatsappPhone && (
                           <Link
                             href={`/inbox/${whatsappPhone}`}
                             title="Message on WhatsApp"
                             className={`${styles.actionLink} ${styles.iconLink}`}
                           >
-                            💬
+                            {isAbandonedPaymentView ? "💬 Recover" : "💬"}
                           </Link>
                         )}
                         <HideOrderToggle orderId={order.id} hidden={!!order.is_hidden} returnTo={returnTo} />
@@ -932,8 +988,10 @@ export default async function OrdersPage({
                   <td className={styles.empty} colSpan={9}>
                     {isHiddenReview
                       ? "No test/hidden orders."
-                      : isPaymentPendingView
-                      ? "No unpaid orders right now — everything here has either completed payment or hasn't been created yet."
+                      : isAbandonedPaymentView
+                      ? "No abandoned checkouts right now."
+                      : isCodBalancePendingView
+                      ? "No COD balances are awaiting collection."
                       : isDeliveredView
                       ? "No delivered orders found."
                       : isDeliveryIssuesView

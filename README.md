@@ -84,6 +84,65 @@ Copy `.env.example` to `.env.local` for local development or add them in Vercel.
 
 `/inventory` tracks every fragrance in 8ML and 50ML sizes. Migration `008_inventory.sql` seeds opening stock at 25 units per 8ML SKU and 15 per 50ML SKU, then backfills existing paid orders. Pending and failed checkouts do not consume stock. Trial packs deduct one 8ML unit from each of the three named fragrances; regular bottles deduct their line-item quantity. Refunds/cancellations restore prior allocations, and manual adjustments/absolute overrides require a reason and remain visible in the stock movement history.
 
+### Storefront inventory enforcement
+
+Run `supabase/migrations/010_storefront_inventory.sql` only after migration 008.
+It adds an audited storefront enable/disable switch to every 8ML and 50ML SKU,
+plus atomic 15-minute checkout reservations. The 8ML switch controls whether a
+fragrance can be selected in the Discovery Set; the 50ML switch controls the
+main bottle. Stock tracking remains active even when a SKU is manually disabled.
+
+Safe rollout order:
+
+1. Apply migration 010 to the shared Supabase database.
+2. Deploy this operations app and verify every count and storefront switch at `/inventory`.
+3. Deploy the mini-store with `INVENTORY_ENFORCEMENT_ENABLED=false`.
+4. Test `/api/inventory/availability`, a main-bottle checkout and a Discovery Set checkout.
+5. Set `INVENTORY_ENFORCEMENT_ENABLED=true` in the mini-store and redeploy.
+
+Turning that environment flag back to `false` is the immediate rollback. The
+additive database objects can remain installed and existing paid-order stock
+deduction continues to work either way.
+
+## Post-delivery customer follow-ups
+
+Run `supabase/migrations/009_customer_followups.sql`, then open `/follow-ups`.
+The migration creates one follow-up for every fully paid, delivered order and
+backfills existing eligible orders. Partial-COD purchases only qualify after
+the balance is marked collected. Trial-pack feedback supports favourites,
+rating, longevity, strength, purchase interest and an outcome-driven next
+action. Calls and WhatsApp contacts can be logged with retry times; after three
+unanswered attempts the task closes as no response. An inbound WhatsApp reply
+moves the customer's latest open follow-up back into progress automatically.
+
+## Order payment queues
+
+The Orders page keeps checkout leads separate from confirmed purchases:
+
+- **Operations — Paid** contains full-payment orders and token-paid COD orders that can be fulfilled.
+- **Abandoned Checkouts** contains pending/failed payment records where no payment was confirmed. These remain available for WhatsApp recovery but are marked do-not-fulfil.
+- **COD Balance Pending** contains real partial-COD orders whose token was paid and whose remaining balance still needs collection.
+
+The dashboard's **Collected today** amount counts only the COD token until the
+balance is marked collected; abandoned checkout values are never counted as
+received revenue. Delhivery and Shadowfax tracking do not provide a reliable
+COD settlement/remittance flag, so the configured business rule treats a
+courier-confirmed delivery of a token-paid COD order as collection: the COD
+balance becomes `collected` and the order moves to `completed`. The inference
+is recorded in the order timeline.
+
+Courier tracking does not block Orders-page rendering. After the saved order
+data appears, the page starts a freshness-throttled background refresh, shows
+`Refreshing tracking…`, and refreshes the table when complete. The control
+then remains available as a force-refresh button.
+
+For continuous refresh, `.github/workflows/courier-sync-cron.yml` calls the
+same secured endpoint every 10 minutes. Add these GitHub Actions repository
+secrets before enabling it:
+
+- `APP_BASE_URL`: the deployed app URL without a trailing slash.
+- `CRON_SECRET`: the same value configured in the deployed application.
+
 ## Local run
 ```bash
 npm install

@@ -13,7 +13,7 @@ function stockTone(stock: number, threshold: number) {
 export default async function InventoryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ updated?: string }>;
+  searchParams: Promise<{ updated?: string; availability_updated?: string }>;
 }) {
   const params = await searchParams;
   const supabase = supabaseAdmin();
@@ -56,6 +56,12 @@ export default async function InventoryPage({
         </div>
       )}
 
+      {params.availability_updated === "1" && (
+        <div style={{ padding: "12px 16px", marginBottom: 18, borderRadius: 10, background: "#dcfce7", color: "#166534", fontWeight: 700 }}>
+          Storefront availability updated. The mini-store will use the new setting on its next availability refresh.
+        </div>
+      )}
+
       {error && (
         <div style={{ padding: 16, borderRadius: 10, background: "#fee2e2", color: "#991b1b" }}>
           Inventory is not set up yet. Apply migration 008_inventory.sql. ({error.message})
@@ -91,6 +97,32 @@ export default async function InventoryPage({
               <div className="muted" style={{ fontSize: 12, marginTop: 12 }}>
                 Opening stock: {sku.opening_stock} · Low-stock warning at {sku.low_stock_threshold}
               </div>
+
+              <div style={{ marginTop: 12, padding: 11, borderRadius: 9, background: sku.storefront_enabled ? "#f0fdf4" : "#fef2f2", color: sku.storefront_enabled ? "#166534" : "#991b1b", fontSize: 12 }}>
+                <strong>{sku.size === "8ml" ? "Discovery Set" : "Main store"}: {sku.storefront_enabled ? "Enabled" : "Manually disabled"}</strong>
+                <div style={{ marginTop: 3 }}>
+                  {sku.current_stock <= 0
+                    ? "Customers cannot buy this SKU because stock is zero."
+                    : sku.storefront_enabled
+                      ? "Customers can buy this SKU while stock remains."
+                      : "Stock remains tracked, but customers cannot select or buy it."}
+                </div>
+              </div>
+
+              <details style={{ marginTop: 10 }}>
+                <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+                  {sku.storefront_enabled ? "Disable on storefront" : "Enable on storefront"}
+                </summary>
+                <form action="/api/inventory/storefront" method="POST" style={{ marginTop: 12, display: "grid", gap: 9 }}>
+                  <input type="hidden" name="sku_id" value={sku.id} />
+                  <input type="hidden" name="enabled" value={sku.storefront_enabled ? "false" : "true"} />
+                  <input name="reason" required minLength={3} placeholder={sku.storefront_enabled ? "Reason for disabling" : "Reason for enabling"} style={inputStyle} />
+                  <input name="admin_password" type="password" required placeholder="Admin password" style={inputStyle} />
+                  <button type="submit" style={{ ...buttonStyle, background: sku.storefront_enabled ? "#991b1b" : "#166534" }}>
+                    {sku.storefront_enabled ? "Disable this SKU" : "Enable this SKU"}
+                  </button>
+                </form>
+              </details>
 
               <details style={{ marginTop: 14 }}>
                 <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 700 }}>Adjust or override stock</summary>

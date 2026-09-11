@@ -10,6 +10,18 @@ import { SESSION_COOKIE, getExpectedSessionValue } from "./lib/auth";
 //     Vercel Cron (or a manual curl with CRON_SECRET), no cookies; it has
 //     its own bearer-token check inside the route already
 export async function middleware(req: NextRequest) {
+  // GitHub Actions calls the courier refresh without a browser cookie.
+  // Permit only an authenticated scheduled GET; browser POSTs continue to
+  // require the normal dashboard session below.
+  if (
+    req.nextUrl.pathname === "/api/orders/background-sync" &&
+    req.method === "GET" &&
+    !!process.env.CRON_SECRET &&
+    req.headers.get("authorization") === `Bearer ${process.env.CRON_SECRET}`
+  ) {
+    return NextResponse.next();
+  }
+
   const cookie = req.cookies.get(SESSION_COOKIE)?.value;
   const expected = await getExpectedSessionValue();
 

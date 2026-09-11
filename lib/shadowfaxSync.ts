@@ -34,7 +34,7 @@ export type ShadowfaxSyncResult = {
 
 async function applyShipmentToOrder(
   supabase: ReturnType<typeof supabaseAdmin>,
-  order: { id: string; shipping_status: string },
+  order: { id: string; shipping_status: string; payment_status: string; payment_type: string; cod_balance_status: string },
   shipment: ShadowfaxOrderDetail
 ): Promise<ShadowfaxSyncResult> {
   const rawStatus = shipment.status_display || shipment.status || "";
@@ -47,12 +47,19 @@ async function applyShipmentToOrder(
     updated_at: now,
   };
 
+  const completesCod = mappedStatus === "delivered"
+    && order.payment_status === "paid"
+    && order.payment_type === "partial_cod"
+    && order.cod_balance_status === "pending";
+  const targetStatus = completesCod ? "completed" : mappedStatus;
+  if (completesCod) updatePayload.cod_balance_status = "collected";
+
   const statusChanged =
-    !!mappedStatus &&
-    mappedStatus !== order.shipping_status &&
-    shouldAdvanceOrderStatus(order.shipping_status, mappedStatus);
+    !!targetStatus &&
+    targetStatus !== order.shipping_status &&
+    shouldAdvanceOrderStatus(order.shipping_status, targetStatus);
   if (statusChanged) {
-    updatePayload.shipping_status = mappedStatus;
+    updatePayload.shipping_status = targetStatus;
   }
 
   const { error: updateError } = await supabase.from("orders").update(updatePayload).eq("id", order.id);
@@ -65,7 +72,9 @@ async function applyShipmentToOrder(
   const locationSuffix = latestEvent?.location ? ` at ${latestEvent.location}` : "";
 
   let historyNote: string;
-  if (statusChanged) {
+  if (completesCod && statusChanged) {
+    historyNote = `Synced from Shadowfax: "${rawStatus}"${locationSuffix} — COD balance assumed collected and order completed`;
+  } else if (statusChanged) {
     historyNote = `Synced from Shadowfax: "${rawStatus}"${locationSuffix}`;
   } else if (mappedStatus && ORDER_STATUS_ADMIN_LOCKED.includes(order.shipping_status)) {
     historyNote = `Delivery Status updated to "${rawStatus}"${locationSuffix} — Order Status left as "${order.shipping_status}" (admin-set, not overridden)`;
@@ -77,14 +86,14 @@ async function applyShipmentToOrder(
 
   await supabase.from("order_status_history").insert({
     order_id: order.id,
-    status: statusChanged ? mappedStatus! : order.shipping_status,
+    status: statusChanged ? targetStatus! : order.shipping_status,
     note: historyNote,
   });
 
   return {
     synced: true,
     statusChanged,
-    newStatus: statusChanged ? mappedStatus! : order.shipping_status,
+    newStatus: statusChanged ? targetStatus! : order.shipping_status,
     rawStatus,
     syncedAt: now,
   };
@@ -97,19 +106,21 @@ export type ShadowfaxBulkSyncResult = {
   error?: string;
 };
 
-export async function bulkSyncShadowfaxStatuses(): Promise<ShadowfaxBulkSyncResult> {
+export async function bulkSyncShadowfaxStatuses(options: { staleOnly?: boolean } = {}): Promise<ShadowfaxBulkSyncResult> {
   const supabase = supabaseAdmin();
   const { data, error } = await supabase
     .from("orders")
-    .select("id, shipping_status, shadowfax_waybill")
+    .select("id, shipping_status, payment_status, payment_type, cod_balance_status, shadowfax_waybill, shadowfax_last_synced_at")
     .eq("is_hidden", false)
     .not("shadowfax_waybill", "is", null);
 
   if (error) return { checked: 0, matched: 0, updated: 0, error: error.message };
 
   const allTrackedOrders = data || [];
+  const staleCutoff = Date.now() - AUTO_SYNC_STALE_AFTER_MS;
   const orders = allTrackedOrders.filter(
     (order) => !SYNC_TERMINAL_STATUSES.includes(order.shipping_status)
+      && (!options.staleOnly || !order.shadowfax_last_synced_at || new Date(order.shadowfax_last_synced_at).getTime() < staleCutoff)
   );
   const awbUseCount = new Map<string, number>();
   for (const order of allTrackedOrders) {
@@ -124,14 +135,14 @@ export async function bulkSyncShadowfaxStatuses(): Promise<ShadowfaxBulkSyncResu
     for (let i = 0; i < orders.length; i += 50) {
       const batch = orders.slice(i, i + 50);
       const shipments = await trackShadowfaxWaybills(batch.map((order) => order.shadowfax_waybill!));
-      for (const order of batch) {
-        if ((awbUseCount.get(order.shadowfax_waybill!) || 0) > 1) continue;
+      await Promise.all(batch.map(async (order) => {
+        if ((awbUseCount.get(order.shadowfax_waybill!) || 0) > 1) return;
         const shipment = shipments[order.shadowfax_waybill!];
-        if (!shipment) continue;
+        if (!shipment) return;
         matched++;
         const result = await applyShipmentToOrder(supabase, order, shipment);
         if (result.synced) updated++;
-      }
+      }));
     }
     return { checked: orders.length, matched, updated };
   } catch (error: any) {
@@ -144,7 +155,7 @@ export async function syncOrderShadowfaxStatus(orderId: string): Promise<Shadowf
 
   const { data: order, error: orderError } = await supabase
     .from("orders")
-    .select("id, shipping_status, shadowfax_waybill")
+    .select("id, shipping_status, payment_status, payment_type, cod_balance_status, shadowfax_waybill")
     .eq("id", orderId)
     .maybeSingle();
 

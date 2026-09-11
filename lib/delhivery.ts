@@ -29,6 +29,15 @@ export type DelhiveryShipment = {
   ReferenceNo?: string;
   PickUpDate?: string;
   Status: DelhiveryShipmentStatus;
+  Scans?: Array<{
+    ScanDetail?: {
+      Scan?: string;
+      Instructions?: string;
+      ScanDateTime?: string;
+      ScannedLocation?: string;
+      StatusCode?: string;
+    };
+  }>;
 };
 
 // Shared low-level call — the packages/json endpoint accepts EITHER a
@@ -152,4 +161,58 @@ export function mapDelhiveryStatus(rawStatus: string): string | null {
   if (s.includes("pending")) return "pending";
 
   return null;
+}
+
+// Delhivery's top-level Status can be a generic "Pending" even after the
+// parcel has been picked up and moved between facilities. In that case the
+// Scans array is the reliable lifecycle evidence. Choose the furthest real
+// stage seen across both sources, while preserving terminal return/cancel
+// signals. This prevents a later facility-level "Pending" scan from hiding
+// an earlier, genuine "In Transit" scan.
+export function deriveDelhiveryShipmentStatus(shipment: DelhiveryShipment): {
+  rawStatus: string;
+  mappedStatus: string | null;
+  location: string;
+} {
+  const candidates: Array<{ label: string; mapped: string | null; location: string; time: string }> = [];
+  const headline = shipment.Status;
+  if (headline) {
+    const label = headline.Status || headline.Instructions || "";
+    candidates.push({
+      label,
+      mapped: mapDelhiveryStatus(`${headline.Status || ""} ${headline.Instructions || ""}`),
+      location: headline.StatusLocation || "",
+      time: headline.StatusDateTime || "",
+    });
+  }
+
+  for (const wrapper of shipment.Scans || []) {
+    const scan = wrapper.ScanDetail;
+    if (!scan) continue;
+    candidates.push({
+      label: scan.Scan || scan.Instructions || "",
+      mapped: mapDelhiveryStatus(`${scan.Scan || ""} ${scan.Instructions || ""}`),
+      location: scan.ScannedLocation || "",
+      time: scan.ScanDateTime || "",
+    });
+  }
+
+  const terminal = candidates
+    .filter((c) => c.mapped === "returned" || c.mapped === "cancelled")
+    .sort((a, b) => b.time.localeCompare(a.time))[0];
+  if (terminal) return { rawStatus: terminal.label, mappedStatus: terminal.mapped, location: terminal.location };
+
+  const rank: Record<string, number> = {
+    pending: 0, confirmed: 1, packed: 2, shipped: 3, out_for_delivery: 4, delivered: 5,
+  };
+  const best = candidates
+    .filter((c) => c.mapped && rank[c.mapped] !== undefined)
+    .sort((a, b) => (rank[b.mapped!] - rank[a.mapped!]) || b.time.localeCompare(a.time))[0];
+
+  if (best) return { rawStatus: best.label, mappedStatus: best.mapped, location: best.location };
+  return {
+    rawStatus: headline?.Status || headline?.Instructions || "",
+    mappedStatus: null,
+    location: headline?.StatusLocation || "",
+  };
 }
