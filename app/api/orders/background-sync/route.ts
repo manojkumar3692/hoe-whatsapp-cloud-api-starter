@@ -1,19 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { bulkSyncOrdersByOrderNumber } from "../../../../lib/delhiverySync";
-import { bulkSyncShadowfaxStatuses } from "../../../../lib/shadowfaxSync";
+import { bulkSyncShiprocketStatuses } from "../../../../lib/shiprocketSync";
 import { completeDeliveredCodOrders } from "../../../../lib/codCompletion";
 
 async function runSync(force: boolean) {
-  const [delhivery, shadowfax] = await Promise.all([
+  const [delhivery, shiprocket] = await Promise.all([
     bulkSyncOrdersByOrderNumber({ staleOnly: !force }),
-    bulkSyncShadowfaxStatuses({ staleOnly: !force }),
+    bulkSyncShiprocketStatuses({ staleOnly: !force }),
   ]);
   const cod = await completeDeliveredCodOrders();
-  const errors = [delhivery.error, shadowfax.error, cod.error].filter(Boolean);
+  const errors = [delhivery.error, shiprocket.error, cod.error].filter(Boolean);
   return {
     ok: errors.length === 0,
     delhivery,
-    shadowfax,
+    shiprocket,
     cod,
     error: errors.join("; ") || undefined,
   };
@@ -43,4 +43,3 @@ export async function GET(req: NextRequest) {
   const result = await runSync(false);
   return NextResponse.json(result, { status: result.ok ? 200 : 502 });
 }
-

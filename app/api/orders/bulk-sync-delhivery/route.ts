@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { bulkSyncOrdersByOrderNumber } from "../../../../lib/delhiverySync";
-import { bulkSyncShadowfaxStatuses } from "../../../../lib/shadowfaxSync";
+import { bulkSyncShiprocketStatuses } from "../../../../lib/shiprocketSync";
 
 // Matches every order missing a waybill against Delhivery by ORDER NUMBER
 // (the "Order ID" / reference field used when creating the shipment in
@@ -10,9 +10,9 @@ import { bulkSyncShadowfaxStatuses } from "../../../../lib/shadowfaxSync";
 export async function POST(req: NextRequest) {
   const form = await req.formData();
 
-  const [result, shadowfax] = await Promise.all([
+  const [result, shiprocket] = await Promise.all([
     bulkSyncOrdersByOrderNumber(),
-    bulkSyncShadowfaxStatuses(),
+    bulkSyncShiprocketStatuses(),
   ]);
 
   const returnTo = String(form.get("return_to") || "/orders");
@@ -23,16 +23,16 @@ export async function POST(req: NextRequest) {
   url.searchParams.set("updated", String(result.updated));
   url.searchParams.set("unmatched", String(result.unmatchedOrderNumbers.length));
   url.searchParams.set("shipments_returned", String(result.totalShipmentsReturned));
-  url.searchParams.set("shadowfax_checked", String(shadowfax.checked));
-  url.searchParams.set("shadowfax_matched", String(shadowfax.matched));
-  url.searchParams.set("shadowfax_updated", String(shadowfax.updated));
+  url.searchParams.set("shiprocket_checked", String(shiprocket.checked));
+  url.searchParams.set("shiprocket_matched", String(shiprocket.matched));
+  url.searchParams.set("shiprocket_updated", String(shiprocket.updated));
   if (result.sampleReturnedReferenceNumbers.length > 0) {
     url.searchParams.set("sample_refs", result.sampleReturnedReferenceNumbers.join(","));
   }
   if (result.unmatchedOrderNumbers.length > 0) {
     url.searchParams.set("sample_unmatched", result.unmatchedOrderNumbers.slice(0, 10).join(","));
   }
-  const errors = [result.error, shadowfax.error].filter(Boolean);
+  const errors = [result.error, shiprocket.error].filter(Boolean);
   if (errors.length) url.searchParams.set("bulk_sync_error", errors.join("; "));
 
   return NextResponse.redirect(url, 303);
