@@ -8,6 +8,7 @@ import CourierRefresh from "../components/CourierRefresh";
 import { supabaseAdmin } from "../../lib/supabaseAdmin";
 import { parseCartItems, cartItemName } from "../../lib/cartItems";
 import { normalizePhone } from "../../lib/phone";
+import { isShiprocketEnabled } from "../../lib/shiprocket";
 import styles from "./orders.module.css";
 
 export const dynamic = "force-dynamic";
@@ -137,13 +138,13 @@ function deliveryStatusCell(order: any) {
   if (order.delhivery_waybill) {
     return courierStatusBadge("🚚", order.delhivery_last_status_raw, order.delhivery_last_synced_at);
   }
-  if (order.shadowfax_waybill) {
-    return courierStatusBadge("📦", order.shadowfax_last_status_raw, order.shadowfax_last_synced_at);
+  if (isShiprocketEnabled() && order.shiprocket_waybill) {
+    return courierStatusBadge("📦", order.shiprocket_last_status_raw, order.shiprocket_last_synced_at);
   }
   if (STATUSES_EXPECTING_TRACKING.includes(order.shipping_status)) {
     return (
       <span
-        title="Order Status says this shipped, but no courier waybill (Delhivery or Shadowfax) was ever attached — that status was set manually and isn't confirmed by either courier."
+        title="Order Status says this shipped, but no courier waybill (Delhivery or Shiprocket) was ever attached — that status was set manually and isn't confirmed by either courier."
         style={{
           background: "#fef3c7",
           color: "#92400e",
@@ -315,9 +316,9 @@ export default async function OrdersPage({
     shipments_returned?: string;
     sample_refs?: string;
     sample_unmatched?: string;
-    shadowfax_checked?: string;
-    shadowfax_matched?: string;
-    shadowfax_updated?: string;
+    shiprocket_checked?: string;
+    shiprocket_matched?: string;
+    shiprocket_updated?: string;
     bulk_sync_error?: string;
   }>;
 }) {
@@ -351,9 +352,9 @@ export default async function OrdersPage({
     "shipments_returned",
     "sample_refs",
     "sample_unmatched",
-    "shadowfax_checked",
-    "shadowfax_matched",
-    "shadowfax_updated",
+    "shiprocket_checked",
+    "shiprocket_matched",
+    "shiprocket_updated",
     "bulk_sync_error",
   ];
   const returnToQuery = new URLSearchParams(
@@ -650,8 +651,8 @@ export default async function OrdersPage({
             <>
               <div>
                 Courier sync complete. Delhivery checked {params.checked}, matched {params.matched}, updated{" "}
-                {params.updated}. Shadowfax checked {params.shadowfax_checked || 0}, matched{" "}
-                {params.shadowfax_matched || 0}, updated {params.shadowfax_updated || 0}.
+                {params.updated}. Shiprocket checked {params.shiprocket_checked || 0}, matched{" "}
+                {params.shiprocket_matched || 0}, updated {params.shiprocket_updated || 0}.
                 {Number(params.unmatched) > 0 && (
                   <> {params.unmatched} Delhivery order{params.unmatched === "1" ? "" : "s"} could not be matched.</>
                 )}

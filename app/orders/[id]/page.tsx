@@ -4,7 +4,8 @@ import { supabaseAdmin } from "../../../lib/supabaseAdmin";
 import { parseCartItems, cartItemName } from "../../../lib/cartItems";
 import { normalizePhone } from "../../../lib/phone";
 import { isDelhiverySyncDue, syncOrderDelhiveryStatus } from "../../../lib/delhiverySync";
-import { isShadowfaxSyncDue, syncOrderShadowfaxStatus } from "../../../lib/shadowfaxSync";
+import { isShiprocketSyncDue, syncOrderShiprocketStatus } from "../../../lib/shiprocketSync";
+import { isShiprocketEnabled } from "../../../lib/shiprocket";
 
 export const dynamic = "force-dynamic";
 
@@ -116,14 +117,14 @@ export default async function OrderDetailPage({
     }
   }
 
-  // Same auto-refresh pattern, for orders shipped via Shadowfax instead.
-  if (isShadowfaxSyncDue(order)) {
-    const sfxResult = await syncOrderShadowfaxStatus(order.id);
-    if (sfxResult.synced) {
-      order.shadowfax_last_status_raw = sfxResult.rawStatus ?? order.shadowfax_last_status_raw;
-      order.shadowfax_last_synced_at = sfxResult.syncedAt ?? order.shadowfax_last_synced_at;
-      if (sfxResult.statusChanged && sfxResult.newStatus) {
-        order.shipping_status = sfxResult.newStatus;
+  // Same auto-refresh pattern, for orders shipped through Shiprocket.
+  if (isShiprocketSyncDue(order)) {
+    const shiprocketResult = await syncOrderShiprocketStatus(order.id);
+    if (shiprocketResult.synced) {
+      order.shiprocket_last_status_raw = shiprocketResult.rawStatus ?? order.shiprocket_last_status_raw;
+      order.shiprocket_last_synced_at = shiprocketResult.syncedAt ?? order.shiprocket_last_synced_at;
+      if (shiprocketResult.statusChanged && shiprocketResult.newStatus) {
+        order.shipping_status = shiprocketResult.newStatus;
       }
     }
   }
@@ -131,6 +132,7 @@ export default async function OrderDetailPage({
   const items = parseCartItems(order.items);
   const whatsappPhone = normalizePhone(order.customer_phone || "");
   const isPartialCod = order.payment_type === "partial_cod";
+  const shiprocketEnabled = isShiprocketEnabled();
 
   const { data: history } = await supabase
     .from("order_status_history")
@@ -178,9 +180,9 @@ export default async function OrderDetailPage({
               🚚 {order.delhivery_last_status_raw || "Not synced yet"}
             </span>
           )}
-          {order.shadowfax_waybill && (
+          {shiprocketEnabled && order.shiprocket_waybill && (
             <span
-              title="Delivery Status — as reported by Shadowfax, read-only"
+              title="Delivery Status — as reported by Shiprocket, read-only"
               style={{
                 background: "#f3f4f6",
                 color: "#374151",
@@ -191,16 +193,16 @@ export default async function OrderDetailPage({
                 border: "1px dashed #d1d5db",
               }}
             >
-              📦 {order.shadowfax_last_status_raw || "Not synced yet"}
+              📦 {order.shiprocket_last_status_raw || "Not synced yet"}
             </span>
           )}
           {!order.delhivery_waybill &&
-            !order.shadowfax_waybill &&
+            (!shiprocketEnabled || !order.shiprocket_waybill) &&
             ["shipped", "out_for_delivery", "delivered", "delivery_disputed", "completed"].includes(
               order.shipping_status
             ) && (
               <span
-                title="Order Status says this shipped, but no courier waybill (Delhivery or Shadowfax) was ever attached — that status was set manually and isn't confirmed by either courier. Add an AWB number below to start tracking it for real."
+                title="Order Status says this shipped, but no courier waybill (Delhivery or Shiprocket) was ever attached — that status was set manually and isn't confirmed by either courier. Add an AWB number below to start tracking it for real."
                 style={{
                   background: "#fef3c7",
                   color: "#92400e",
@@ -326,7 +328,7 @@ export default async function OrderDetailPage({
         <Info label="Order Status (admin-controlled)" value={<StatusBadge value={order.shipping_status} />} />
         <div style={{ fontSize: 12, color: "#999", marginTop: -8, marginBottom: 12 }}>
           This is your own fulfillment stage — it defaults to pending and only moves forward
-          automatically as Delhivery or Shadowfax confirms progress. If you set it to cancelled
+          automatically as Delhivery or Shiprocket confirms progress. If you set it to cancelled
           (or delivery issue/returned/refunded/rejected), it stays that way permanently — future courier syncs
           will never overwrite it. See the Delivery Status sections below for each courier's own
           live status.
@@ -442,22 +444,23 @@ export default async function OrderDetailPage({
         )}
       </section>
 
+      {shiprocketEnabled && (
       <section style={{ ...card, marginTop: 16 }}>
-        <h2>Delivery Status (as per Shadowfax)</h2>
+        <h2>Delivery Status (as per Shiprocket)</h2>
         <div style={{ fontSize: 12, color: "#999", marginTop: -6, marginBottom: 14 }}>
-          Read-only — always reflects Shadowfax's own tracking, even if it disagrees with the
+          Read-only — always reflects Shiprocket's own tracking, even if it disagrees with the
           Order Status above. Use this section instead of Delhivery's above if this order shipped
-          via Shadowfax.
+          through Shiprocket.
         </div>
 
-        <form action="/api/orders/set-shadowfax-waybill" method="POST" style={{ marginBottom: 16 }}>
+        <form action="/api/orders/set-shiprocket-waybill" method="POST" style={{ marginBottom: 16 }}>
           <input type="hidden" name="id" value={order.id} />
           <label style={{ fontSize: 12, color: "#777" }}>Waybill / AWB Number</label>
           <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
             <input
-              name="shadowfax_waybill"
-              defaultValue={order.shadowfax_waybill || ""}
-              placeholder="e.g. SF1234567890TES"
+              name="shiprocket_waybill"
+              defaultValue={order.shiprocket_waybill || ""}
+              placeholder="e.g. 141123221084922"
               style={{ ...input, marginTop: 0, flex: 1 }}
             />
             <button
@@ -477,30 +480,56 @@ export default async function OrderDetailPage({
             </button>
           </div>
           <div style={{ fontSize: 12, color: "#999", marginTop: 4 }}>
-            Paste the AWB number after creating the shipment with Shadowfax. Once saved, this page
-            checks Shadowfax automatically whenever it loads (at most once every few minutes) — use
-            Sync Now below to force an immediate check instead of waiting. Note: unlike Delhivery,
-            Shadowfax's tracking API can't be matched in bulk by order number — the AWB has to be
-            entered here manually per order.
+            Paste the AWB after creating and assigning the shipment in Shiprocket. Once saved, this
+            page checks Shiprocket automatically whenever it loads (at most once every few minutes) —
+            use Sync Now below to force an immediate check.
           </div>
         </form>
 
-        {order.shadowfax_waybill && (
+        {!order.shiprocket_waybill && (
+          <form action={`/api/orders/${order.id}/sync-shiprocket`} method="POST" style={{ marginBottom: 16 }}>
+            <button
+              type="submit"
+              style={{
+                padding: "10px 16px",
+                borderRadius: 8,
+                border: "1px solid #ddd",
+                background: "#fff",
+                color: "#111",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              🔎 Find using Order ID {order.order_number}
+            </button>
+            <div style={{ fontSize: 12, color: "#999", marginTop: 4 }}>
+              This works when Shiprocket's store order ID exactly matches this order number.
+              A successful match saves the AWB automatically for future syncs.
+            </div>
+          </form>
+        )}
+
+        {order.shiprocket_waybill && (
           <>
+            <Info label="Courier" value={order.shiprocket_courier_name || "-"} />
             <Info
               label="Delivery Status"
-              value={order.shadowfax_last_status_raw || "Not synced yet"}
+              value={order.shiprocket_last_status_raw || "Not synced yet"}
+            />
+            <Info
+              label="Shiprocket Tracking"
+              value={order.shiprocket_tracking_url ? <a href={order.shiprocket_tracking_url} target="_blank">Open tracking page</a> : "-"}
             />
             <Info
               label="Last Synced At"
               value={
-                order.shadowfax_last_synced_at
-                  ? new Date(order.shadowfax_last_synced_at).toLocaleString()
+                order.shiprocket_last_synced_at
+                  ? new Date(order.shiprocket_last_synced_at).toLocaleString()
                   : "-"
               }
             />
 
-            <form action={`/api/orders/${order.id}/sync-shadowfax`} method="POST">
+            <form action={`/api/orders/${order.id}/sync-shiprocket`} method="POST">
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
                 <button
                   type="submit"
@@ -522,6 +551,7 @@ export default async function OrderDetailPage({
           </>
         )}
       </section>
+      )}
 
       <section style={{ ...card, marginTop: 16 }}>
         <h2>Order Timeline</h2>

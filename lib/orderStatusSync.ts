@@ -1,4 +1,4 @@
-// Shared rules for how a courier sync (Delhivery, Shadowfax, or any future
+// Shared rules for how a courier sync (Delhivery, Shiprocket, or any future
 // one) is allowed to touch "Order Status" (orders.shipping_status).
 //
 // Order Status is an admin-owned decision — a courier sync should only
@@ -9,7 +9,7 @@
 // column) is the separate, always-updated, read-only field that mirrors
 // the courier's own reporting regardless of what Order Status says.
 //
-// Used by both lib/delhiverySync.ts and lib/shadowfaxSync.ts so an order
+// Used by both lib/delhiverySync.ts and lib/shiprocketSync.ts so an order
 // gets identical sticky-cancel/forward-only treatment no matter which
 // courier is attached to it.
 

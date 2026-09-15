@@ -125,7 +125,7 @@ The Orders page keeps checkout leads separate from confirmed purchases:
 
 The dashboard's **Collected today** amount counts only the COD token until the
 balance is marked collected; abandoned checkout values are never counted as
-received revenue. Delhivery and Shadowfax tracking do not provide a reliable
+received revenue. Delhivery and Shiprocket tracking do not provide a reliable
 COD settlement/remittance flag, so the configured business rule treats a
 courier-confirmed delivery of a token-paid COD order as collection: the COD
 balance becomes `collected` and the order moves to `completed`. The inference
@@ -135,6 +135,32 @@ Courier tracking does not block Orders-page rendering. After the saved order
 data appears, the page starts a freshness-throttled background refresh, shows
 `Refreshing tracking…`, and refreshes the table when complete. The control
 then remains available as a force-refresh button.
+
+### Shiprocket tracking
+
+Apply `supabase/migrations/011_shiprocket.sql`, then configure a dedicated
+Shiprocket API user in the deployment environment:
+
+- `SHIPROCKET_ENABLED`: defaults to off; set it to `true` only when the
+  integration is ready to be activated.
+- `SHIPROCKET_API_EMAIL`: the dedicated API user's email address.
+- `SHIPROCKET_API_PASSWORD`: that API user's password/API key.
+- `SHIPROCKET_CHANNEL_ID`: optional; only needed when duplicate order IDs
+  exist across multiple Shiprocket channels.
+- `SHIPROCKET_BASE_URL`: optional override; defaults to
+  `https://apiv2.shiprocket.in/v1/external`.
+
+Use **Find using Order ID** when the app's order number was used as Shiprocket's
+store order ID; a successful lookup saves the AWB automatically. You can also
+paste the assigned Shiprocket AWB on an order's detail page. The app obtains
+and reuses Shiprocket's 10-day bearer token, refreshes it after an unauthorized
+response, and tracks up to 50 AWBs per request. Shadowfax is no longer called
+or shown; its old database columns are retained only to avoid destructive data
+loss during deployment.
+
+Shiprocket is currently on hold: while `SHIPROCKET_ENABLED` is absent or
+`false`, its UI is hidden and background refreshes make no Shiprocket or
+Shiprocket-related database calls.
 
 For continuous refresh, `.github/workflows/courier-sync-cron.yml` calls the
 same secured endpoint every 10 minutes. Add these GitHub Actions repository

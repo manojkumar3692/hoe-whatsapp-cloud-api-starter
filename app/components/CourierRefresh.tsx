@@ -28,8 +28,8 @@ export default function CourierRefresh({ className }: { className?: string }) {
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.error || "Courier refresh failed");
 
-      const checked = (result.delhivery?.checked || 0) + (result.shadowfax?.checked || 0);
-      const updated = (result.delhivery?.updated || 0) + (result.shadowfax?.updated || 0) + (result.cod?.completed || 0);
+      const checked = (result.delhivery?.checked || 0) + (result.shiprocket?.checked || 0);
+      const updated = (result.delhivery?.updated || 0) + (result.shiprocket?.updated || 0) + (result.cod?.completed || 0);
       setState("success");
       setMessage(checked ? `Updated ${updated} of ${checked} checked` : "Tracking is up to date");
       router.refresh();
@@ -57,4 +57,3 @@ export default function CourierRefresh({ className }: { className?: string }) {
     </div>
   );
 }
-
