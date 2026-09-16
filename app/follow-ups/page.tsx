@@ -108,24 +108,24 @@ export default async function FollowupsPage({
           <button type="submit">Apply</button>
         </form>
         <div className={styles.tableWrap}>
-          <table className={styles.table}>
-            <thead><tr><th>Customer</th><th>Phone</th><th>Order</th><th>Purchase</th><th>Delivered</th><th>Attempts</th><th>Next action</th><th>Status</th><th>Actions</th></tr></thead>
-            <tbody>
+          <table role="table" className={styles.table + " mobile-table"}>
+            <thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col">Customer</th><th role="columnheader" scope="col">Phone</th><th role="columnheader" scope="col">Order</th><th role="columnheader" scope="col">Purchase</th><th role="columnheader" scope="col">Delivered</th><th role="columnheader" scope="col">Attempts</th><th role="columnheader" scope="col">Next action</th><th role="columnheader" scope="col">Status</th><th role="columnheader" scope="col">Actions</th></tr></thead>
+            <tbody role="rowgroup">
               {rows.map((f: any) => {
                 const order: any = ordersById.get(f.order_id) || {};
                 const customer: any = customersById.get(f.customer_id) || {};
                 const phone = normalizePhone(order.customer_phone || customer.phone || "");
                 const actionAt = f.next_action_at || f.due_at;
                 const overdue = actionAt && new Date(actionAt).getTime() <= now && OPEN_STATUSES.includes(f.status);
-                return <tr key={f.id}>
-                  <td><Link className={styles.name} href={`/follow-ups/${f.id}`}>{order.customer_name || customer.name || "Unknown"}</Link><div className={styles.subtle}>{f.followup_type === "trial_pack" ? "Trial pack" : "Regular purchase"}</div></td>
-                  <td><a href={`tel:+${phone}`}>{order.customer_phone || customer.phone || "-"}</a>{(customer.opt_out || customer.blocked) && <div className={styles.subtle} style={{ color: "#991b1b" }}>Do not message</div>}</td>
-                  <td><Link href={`/orders/${order.id}`}>{order.order_number || "-"}</Link><div className={styles.subtle}>{orderItemNames(order.items).join(", ") || "-"}</div></td>
-                  <td>{f.followup_type === "trial_pack" ? "Trial Pack" : "Perfume"}</td>
-                  <td>{formatDate(f.delivered_at)}</td><td>{f.attempt_count}</td>
-                  <td className={overdue ? styles.overdue : ""}>{formatDate(actionAt)}<div className={styles.subtle}>{f.next_action || (overdue ? "Contact customer" : "Scheduled")}</div></td>
-                  <td><Badge status={f.status} /></td>
-                  <td><div className={styles.actions}><a className={`${styles.action} ${styles.call}`} href={`tel:+${phone}`}>☎ Call</a><Link className={styles.action} href={`/inbox/${phone}`}>WhatsApp</Link><Link className={styles.action} href={`/follow-ups/${f.id}`}>Feedback</Link></div></td>
+                return <tr role="row" key={f.id}>
+                  <td data-label="Customer" role="cell"><Link className={styles.name} href={`/follow-ups/${f.id}`}>{order.customer_name || customer.name || "Unknown"}</Link><div className={styles.subtle}>{f.followup_type === "trial_pack" ? "Trial pack" : "Regular purchase"}</div></td>
+                  <td data-label="Phone" role="cell"><a href={`tel:+${phone}`}>{order.customer_phone || customer.phone || "-"}</a>{(customer.opt_out || customer.blocked) && <div className={styles.subtle} style={{ color: "#991b1b" }}>Do not message</div>}</td>
+                  <td data-label="Order" role="cell"><Link href={`/orders/${order.id}`}>{order.order_number || "-"}</Link><div className={styles.subtle}>{orderItemNames(order.items).join(", ") || "-"}</div></td>
+                  <td data-label="Purchase" role="cell">{f.followup_type === "trial_pack" ? "Trial Pack" : "Perfume"}</td>
+                  <td data-label="Delivered" role="cell">{formatDate(f.delivered_at)}</td><td data-label="Attempts" role="cell">{f.attempt_count}</td>
+                  <td data-label="Next action" role="cell" className={overdue ? styles.overdue : ""}>{formatDate(actionAt)}<div className={styles.subtle}>{f.next_action || (overdue ? "Contact customer" : "Scheduled")}</div></td>
+                  <td data-label="Status" role="cell"><Badge status={f.status} /></td>
+                  <td data-label="Actions" role="cell"><div className={styles.actions}><a className={`${styles.action} ${styles.call}`} href={`tel:+${phone}`}>☎ Call</a><Link className={styles.action} href={`/inbox/${phone}`}>WhatsApp</Link><Link className={styles.action} href={`/follow-ups/${f.id}`}>Feedback</Link></div></td>
                 </tr>;
               })}
             </tbody>

@@ -1,6 +1,10 @@
-import Link from "next/link";
+"use client";
 
-export const NAV_ITEMS: { key: string; label: string; href: string }[] = [
+import Link from "next/link";
+import { useState } from "react";
+import PushNotifications from "./PushNotifications";
+
+export const NAV_ITEMS = [
   { key: "home", label: "Home", href: "/" },
   { key: "orders", label: "Orders", href: "/orders" },
   { key: "inventory", label: "Inventory", href: "/inventory" },
@@ -14,133 +18,36 @@ export const NAV_ITEMS: { key: string; label: string; href: string }[] = [
   { key: "messages", label: "Message Logs", href: "/messages" },
 ];
 
-// Shared brand header + nav, used on every page for a consistent look.
-// `active` highlights the current section; `back` adds a small breadcrumb
-// underneath for detail pages (e.g. a single order or a single chat).
-export default function Header({
-  active,
-  back,
-}: {
+export default function Header({ active, back }: {
   active?: string;
   back?: { href: string; label: string };
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
   return (
-    <div style={{ marginBottom: 28 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          flexWrap: "wrap",
-          gap: 16,
-          background: "#fff",
-          border: "1px solid #eadfce",
-          borderRadius: 18,
-          padding: "14px 20px",
-          boxShadow: "0 8px 22px rgba(0,0,0,.04)",
-        }}
-      >
-        <Link
-          href="/"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            textDecoration: "none",
-          }}
-        >
-          <span
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-              background: "#1c1712",
-              color: "#e8c88a",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontWeight: 800,
-              fontSize: 16,
-              letterSpacing: 0.5,
-              flexShrink: 0,
-            }}
-          >
-            E
-          </span>
-          <div>
-            <div
-              style={{
-                fontWeight: 800,
-                fontSize: 15,
-                color: "#1c1712",
-                letterSpacing: 0.4,
-                lineHeight: 1.2,
-              }}
-            >
-              HOUSE OF EON
-            </div>
-            <div style={{ fontSize: 11, color: "#9a8f80", lineHeight: 1.2 }}>
-              WhatsApp Commerce Console
-            </div>
-          </div>
+    <header className="app-header">
+      <div className="header-bar">
+        <Link href="/" className="brand-link">
+          <span className="brand-mark">E</span>
+          <span><strong>HOUSE OF EON</strong><small>WhatsApp Commerce Console</small></span>
         </Link>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <nav style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-            {NAV_ITEMS.map((item) => {
-              const isActive = item.key === active;
-              return (
-                <Link
-                  key={item.key}
-                  href={item.href}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: 999,
-                    fontSize: 13,
-                    fontWeight: isActive ? 700 : 500,
-                    textDecoration: "none",
-                    background: isActive ? "#1c1712" : "transparent",
-                    color: isActive ? "#fff" : "#544c42",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
+        <button type="button" className="mobile-menu-toggle" aria-expanded={menuOpen}
+          aria-controls="dashboard-navigation" onClick={() => setMenuOpen(!menuOpen)}>
+          {menuOpen ? "Close menu" : "Menu"}
+        </button>
+        <div id="dashboard-navigation" className={`header-navigation ${menuOpen ? "is-open" : ""}`}>
+          <nav aria-label="Main navigation">
+            {NAV_ITEMS.map(item => (
+              <Link key={item.key} href={item.href} aria-current={active === item.key ? "page" : undefined}
+                onClick={() => setMenuOpen(false)}>{item.label}</Link>
+            ))}
           </nav>
-
-          <form action="/api/auth/logout" method="POST">
-            <button
-              type="submit"
-              style={{
-                padding: "8px 14px",
-                borderRadius: 999,
-                fontSize: 13,
-                fontWeight: 600,
-                border: "1px solid #eadfce",
-                background: "transparent",
-                color: "#9a8f80",
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              Logout
-            </button>
-          </form>
+          <div className="header-tools">
+            <PushNotifications />
+            <form action="/api/auth/logout" method="POST"><button type="submit" className="logout-button">Logout</button></form>
+          </div>
         </div>
       </div>
-
-      {back && (
-        <div style={{ marginTop: 12 }}>
-          <Link
-            href={back.href}
-            style={{ fontSize: 13, color: "#9a8f80", textDecoration: "none" }}
-          >
-            ← {back.label}
-          </Link>
-        </div>
-      )}
-    </div>
+      {back && <Link className="back-link" href={back.href}>← {back.label}</Link>}
+    </header>
   );
 }

@@ -164,7 +164,7 @@ export default async function CampaignPreviewPage({
         </p>
       </div>
 
-      <div
+      <div className="responsive-grid"
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(4, 1fr)",
@@ -205,7 +205,7 @@ export default async function CampaignPreviewPage({
         />
       </div>
 
-      <table
+      <div className="table-scroll" role="region" aria-label="Scrollable records" tabIndex={0}><table role="table" className="mobile-table"
         style={{
           width: "100%",
           borderCollapse: "collapse",
@@ -213,30 +213,30 @@ export default async function CampaignPreviewPage({
           border: "1px solid #e5e7eb",
         }}
       >
-        <thead>
-          <tr>
-            <th style={th}>Name</th>
-            <th style={th}>Phone</th>
-            <th style={th}>Product</th>
-            <th style={th}>City</th>
-            <th style={th}>Health / Status</th>
-            <th style={th}>Reason</th>
+        <thead role="rowgroup">
+          <tr role="row">
+            <th role="columnheader" scope="col" style={th}>Name</th>
+            <th role="columnheader" scope="col" style={th}>Phone</th>
+            <th role="columnheader" scope="col" style={th}>Product</th>
+            <th role="columnheader" scope="col" style={th}>City</th>
+            <th role="columnheader" scope="col" style={th}>Health / Status</th>
+            <th role="columnheader" scope="col" style={th}>Reason</th>
           </tr>
         </thead>
 
-        <tbody>
+        <tbody role="rowgroup">
           {rows.map((r: any) => (
-            <tr key={r.id}>
-              <td style={td}>{r.name}</td>
-              <td style={td}>{r.phone}</td>
-              <td style={td}>{r.product || "-"}</td>
-              <td style={td}>{r.city || "-"}</td>
-              <td style={td}>{statusBadge(r.status)}</td>
-              <td style={td}>{r.reason || "-"}</td>
+            <tr role="row" key={r.id}>
+              <td data-label="Name" role="cell" style={td}>{r.name}</td>
+              <td data-label="Phone" role="cell" style={td}>{r.phone}</td>
+              <td data-label="Product" role="cell" style={td}>{r.product || "-"}</td>
+              <td data-label="City" role="cell" style={td}>{r.city || "-"}</td>
+              <td data-label="Health / Status" role="cell" style={td}>{statusBadge(r.status)}</td>
+              <td data-label="Reason" role="cell" style={td}>{r.reason || "-"}</td>
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     </main>
   );
 }

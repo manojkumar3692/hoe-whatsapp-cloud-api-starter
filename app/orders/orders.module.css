@@ -173,7 +173,23 @@
 }
 
 @media (max-width: 430px) {
-  .stats { grid-template-columns: 1fr; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .filters, .filtersCompact { grid-template-columns: 1fr; }
   .search, .filterActions { grid-column: auto; }
+}
+
+/* Keep the full work queue and tracking controls reachable on phones. */
+.queueBar { flex-wrap: wrap; }
+@media (max-width: 760px) {
+  .queueBar { overflow: visible; align-items: center; }
+  .queueBar > a { display: inline-flex; align-items: center; min-height: 44px; }
+  .syncForm { display: flex; width: 100%; }
+  .syncForm button { width: 100%; min-height: 44px; white-space: normal; }
+  .tableWrap { overflow: visible; }
+  .actions { flex-wrap: wrap; white-space: normal; }
+  .actionLink { min-height: 44px; min-width: 44px; }
+  .iconLink { width: auto; padding: 8px 12px; }
+  .quickRanges { flex-wrap: wrap; overflow: visible; white-space: normal; }
+  .quickRanges a { display: inline-flex; align-items: center; min-height: 44px; }
+  .ordersTable .dayDivider td { background: transparent; }
 }

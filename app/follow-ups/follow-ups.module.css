@@ -31,3 +31,8 @@
   .filters { grid-template-columns: 1fr; }
 }
 
+@media (max-width: 760px) {
+  .heading { align-items: flex-start; flex-direction: column; }
+  .tableWrap { overflow: visible; }
+  .tab, .action { display: inline-flex; align-items: center; min-height: 44px; }
+}

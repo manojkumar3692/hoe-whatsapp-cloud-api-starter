@@ -725,22 +725,22 @@ export default async function OrdersPage({
           <span className={styles.rangeText}>{formatDateRange(params.date_from, params.date_to, params.date)}</span>
         </div>
         <div className={styles.tableWrap}>
-          <table className={styles.ordersTable}>
-            <thead>
-              <tr>
-                <th>Order</th>
-                <th>Customer</th>
-                <th>Items</th>
-                <th>Amount</th>
-                <th>Payment</th>
-                <th>Fulfillment</th>
-                <th>Courier</th>
-                <th>Placed</th>
-                <th>Actions</th>
+          <table role="table" className={styles.ordersTable + " mobile-table"}>
+            <thead role="rowgroup">
+              <tr role="row">
+                <th role="columnheader" scope="col">Order</th>
+                <th role="columnheader" scope="col">Customer</th>
+                <th role="columnheader" scope="col">Items</th>
+                <th role="columnheader" scope="col">Amount</th>
+                <th role="columnheader" scope="col">Payment</th>
+                <th role="columnheader" scope="col">Fulfillment</th>
+                <th role="columnheader" scope="col">Courier</th>
+                <th role="columnheader" scope="col">Placed</th>
+                <th role="columnheader" scope="col">Actions</th>
               </tr>
             </thead>
 
-            <tbody>
+            <tbody role="rowgroup">
               {orders.map((order: any, index: number) => {
                 const whatsappPhone = normalizePhone(order.customer_phone || "");
                 const customerOrderCount = customerOrderCounts.get(whatsappPhone) || 0;
@@ -753,18 +753,18 @@ export default async function OrdersPage({
                 return (
                   <Fragment key={order.id}>
                   {showDay && (
-                    <tr className={styles.dayDivider}>
-                      <td colSpan={9}>{orderDayLabel(order.created_at)}</td>
+                    <tr role="row" className={styles.dayDivider}>
+                      <td role="cell" colSpan={9}>{orderDayLabel(order.created_at)}</td>
                     </tr>
                   )}
-                  <tr
+                  <tr role="row"
                     style={order.is_hidden
                       ? { opacity: 0.6, background: "#fafafa" }
                       : order.shipping_status === "delivery_disputed"
                       ? { background: "#fff7ed" }
                       : undefined}
                   >
-                    <td>
+                    <td data-label="Order" role="cell">
                       <Link href={`/orders/${order.id}`} className={styles.orderNumber}>
                         {order.order_number}
                       </Link>
@@ -774,7 +774,7 @@ export default async function OrdersPage({
                         </div>
                       )}
                     </td>
-                    <td>
+                    <td data-label="Customer" role="cell">
                       <div className={styles.customer}>
                         {avatar(order.customer_name)}
                         <div className={styles.customerIdentity}>
@@ -796,8 +796,8 @@ export default async function OrdersPage({
                         </div>
                       </div>
                     </td>
-                    <td>{itemsPreview(order.items)}</td>
-                    <td>
+                    <td data-label="Items" role="cell">{itemsPreview(order.items)}</td>
+                    <td data-label="Amount" role="cell">
                       <span className={styles.amount}>{formatINR(order.amount_in_paise)}</span>
                       {noPaymentConfirmed && <div className={styles.subtle}>Expected order value</div>}
                       {codPending && (
@@ -809,7 +809,7 @@ export default async function OrdersPage({
                         </div>
                       )}
                     </td>
-                    <td>
+                    <td data-label="Payment" role="cell">
                       {noPaymentConfirmed ? badge(order.payment_status === "failed" ? "payment failed" : "no payment") : badge(order.payment_status)}
                       <div>{paymentTypeTag(order.payment_type)}</div>
                       {noPaymentConfirmed && (
@@ -818,7 +818,7 @@ export default async function OrdersPage({
                         </div>
                       )}
                     </td>
-                    <td>
+                    <td data-label="Fulfillment" role="cell">
                       {isAbandonedPaymentView ? (
                         <div><span style={{ color: "#991b1b", fontWeight: 800 }}>⛔ Do not fulfil</span><div className={styles.subtle}>Open order if payment was received elsewhere</div></div>
                       ) : (
@@ -832,14 +832,14 @@ export default async function OrdersPage({
                         />
                       )}
                     </td>
-                    <td>{deliveryStatusCell(order)}</td>
-                    <td className={styles.date}>
+                    <td data-label="Courier" role="cell">{deliveryStatusCell(order)}</td>
+                    <td data-label="Placed" role="cell" className={styles.date}>
                       {new Date(order.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
                       <div className={styles.subtle}>
                         {new Date(order.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
                       </div>
                     </td>
-                    <td>
+                    <td data-label="Actions" role="cell">
                       <div className={styles.actions}>
                         <Link href={`/orders/${order.id}`} className={styles.actionLink}>Open</Link>
                         {!noPaymentConfirmed && (
@@ -865,8 +865,8 @@ export default async function OrdersPage({
               })}
 
               {orders.length === 0 && (
-                <tr>
-                  <td className={styles.empty} colSpan={9}>
+                <tr role="row">
+                  <td role="cell" className={styles.empty} colSpan={9}>
                     {isHiddenReview
                       ? "No test/hidden orders."
                       : isAbandonedPaymentView

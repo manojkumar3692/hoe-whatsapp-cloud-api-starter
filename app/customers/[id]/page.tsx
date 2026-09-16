@@ -75,7 +75,7 @@ export default async function CustomerDetailPage({
     <main style={{ padding: 24, background: "#fafafa", minHeight: "100vh" }}>
       <Header active="customers" back={{ href: "/customers", label: "Customers" }} />
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+      <div className="responsive-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
         <div>
           <h1 style={{ marginBottom: 4 }}>{customer.name || "Unknown Customer"}</h1>
           <p style={{ color: "#666", margin: 0 }}>{customer.phone}</p>
@@ -96,7 +96,7 @@ export default async function CustomerDetailPage({
         </Link>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
+      <div className="responsive-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
         <Stat title="Health" value={healthBadge(customer)} />
         <Stat title="Orders" value={orders?.length || 0} />
         <Stat title="Revenue" value={formatINR(revenue)} />
@@ -117,30 +117,30 @@ export default async function CustomerDetailPage({
 
       <section style={{ ...card, marginTop: 16 }}>
         <h2>Orders</h2>
-        <table style={table}>
-          <thead>
-            <tr>
-              <th style={th}>Order</th>
-              <th style={th}>Amount</th>
-              <th style={th}>Payment</th>
-              <th style={th}>Shipping</th>
-              <th style={th}>Date</th>
-              <th style={th}>View</th>
+        <div className="table-scroll" role="region" aria-label="Scrollable records" tabIndex={0}><table role="table" className="mobile-table" style={table}>
+          <thead role="rowgroup">
+            <tr role="row">
+              <th role="columnheader" scope="col" style={th}>Order</th>
+              <th role="columnheader" scope="col" style={th}>Amount</th>
+              <th role="columnheader" scope="col" style={th}>Payment</th>
+              <th role="columnheader" scope="col" style={th}>Shipping</th>
+              <th role="columnheader" scope="col" style={th}>Date</th>
+              <th role="columnheader" scope="col" style={th}>View</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody role="rowgroup">
             {(orders || []).map((o: any) => (
-              <tr key={o.id}>
-                <td style={td}>{o.order_number}</td>
-                <td style={td}>{formatINR(o.amount_in_paise)}</td>
-                <td style={td}>{o.payment_status}</td>
-                <td style={td}>{o.shipping_status}</td>
-                <td style={td}>{new Date(o.created_at).toLocaleString()}</td>
-                <td style={td}><Link href={`/orders/${o.id}`}>View</Link></td>
+              <tr role="row" key={o.id}>
+                <td data-label="Order" role="cell" style={td}>{o.order_number}</td>
+                <td data-label="Amount" role="cell" style={td}>{formatINR(o.amount_in_paise)}</td>
+                <td data-label="Payment" role="cell" style={td}>{o.payment_status}</td>
+                <td data-label="Shipping" role="cell" style={td}>{o.shipping_status}</td>
+                <td data-label="Date" role="cell" style={td}>{new Date(o.created_at).toLocaleString()}</td>
+                <td data-label="View" role="cell" style={td}><Link href={`/orders/${o.id}`}>View</Link></td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </section>
 
       <section style={{ ...card, marginTop: 16 }}>
@@ -160,7 +160,7 @@ export default async function CustomerDetailPage({
         <h2>Post-delivery Follow-ups</h2>
         {(followups || []).length === 0 && <p style={{ color: "#777" }}>No follow-ups yet.</p>}
         {(followups || []).map((f: any) => (
-          <div key={f.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "10px 0", borderBottom: "1px solid #eee" }}>
+          <div className="responsive-row" key={f.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "10px 0", borderBottom: "1px solid #eee" }}>
             <div><b>{f.followup_type === "trial_pack" ? "Trial Pack" : "Regular Purchase"}</b><div style={{ color: "#777", fontSize: 12, marginTop: 3 }}>{f.status.replaceAll("_", " ")} · Due {new Date(f.due_at).toLocaleString()}{f.rating ? ` · ${f.rating}/5` : ""}</div></div>
             <Link href={`/follow-ups/${f.id}`}>Open</Link>
           </div>

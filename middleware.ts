@@ -22,6 +22,9 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // This machine-only endpoint validates its webhook/cron bearer secret itself.
+  if (req.nextUrl.pathname === "/api/push/dispatch") return NextResponse.next();
+
   const cookie = req.cookies.get(SESSION_COOKIE)?.value;
   const expected = await getExpectedSessionValue();
 
@@ -37,6 +40,6 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!login|api/auth|api/webhook|api/checkout-sessions/send-abandoned-cart-reminders|_next/static|_next/image|favicon.ico).*)",
+    "/((?!login|api/auth|api/webhook|api/checkout-sessions/send-abandoned-cart-reminders|_next/static|_next/image|favicon.ico|sw\\.js$|manifest\\.webmanifest$|icons/).*)",
   ],
 };

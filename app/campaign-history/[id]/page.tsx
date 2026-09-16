@@ -134,7 +134,7 @@ export default async function CampaignDetailPage({
         <b>{campaign?.coupon_code || "-"}</b>
       </p>
 
-      <div
+      <div className="responsive-grid"
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(5, 1fr)",
@@ -153,7 +153,7 @@ export default async function CampaignDetailPage({
         <Stat title="Replies After Campaign" value={replies?.length || 0} />
       </div>
 
-      <table
+      <div className="table-scroll" role="region" aria-label="Scrollable records" tabIndex={0}><table role="table" className="mobile-table"
         style={{
           width: "100%",
           borderCollapse: "collapse",
@@ -161,22 +161,22 @@ export default async function CampaignDetailPage({
           border: "1px solid #e5e7eb",
         }}
       >
-        <thead style={{ background: "#f9fafb" }}>
-          <tr>
-            <th style={th}>Name</th>
-            <th style={th}>Phone</th>
-            <th style={th}>Product</th>
-            <th style={th}>Message Status</th>
-            <th style={th}>Customer Health</th>
-            <th style={th}>Fails</th>
-            <th style={th}>Reason</th>
-            <th style={th}>Replies</th>
-            <th style={th}>Orders</th>
-            <th style={th}>Chat</th>
+        <thead role="rowgroup" style={{ background: "#f9fafb" }}>
+          <tr role="row">
+            <th role="columnheader" scope="col" style={th}>Name</th>
+            <th role="columnheader" scope="col" style={th}>Phone</th>
+            <th role="columnheader" scope="col" style={th}>Product</th>
+            <th role="columnheader" scope="col" style={th}>Message Status</th>
+            <th role="columnheader" scope="col" style={th}>Customer Health</th>
+            <th role="columnheader" scope="col" style={th}>Fails</th>
+            <th role="columnheader" scope="col" style={th}>Reason</th>
+            <th role="columnheader" scope="col" style={th}>Replies</th>
+            <th role="columnheader" scope="col" style={th}>Orders</th>
+            <th role="columnheader" scope="col" style={th}>Chat</th>
           </tr>
         </thead>
 
-        <tbody>
+        <tbody role="rowgroup">
           {rows.map((r: any) => {
             const customer = Array.isArray(r.customers)
               ? r.customers[0]
@@ -185,29 +185,29 @@ export default async function CampaignDetailPage({
             const log = logMap.get(r.phone);
 
             return (
-              <tr key={r.id}>
-                <td style={td}>{r.name || customer?.name || "Unknown"}</td>
-                <td style={td}>{r.phone}</td>
-                <td style={td}>{r.product || customer?.product || "-"}</td>
-                <td style={td}>{statusBadge(log?.status || r.status)}</td>
-                <td style={td}>{healthBadge(customer)}</td>
-                <td style={td}>{customer?.marketing_fail_count || 0}</td>
-                <td style={td}>
+              <tr role="row" key={r.id}>
+                <td data-label="Name" role="cell" style={td}>{r.name || customer?.name || "Unknown"}</td>
+                <td data-label="Phone" role="cell" style={td}>{r.phone}</td>
+                <td data-label="Product" role="cell" style={td}>{r.product || customer?.product || "-"}</td>
+                <td data-label="Message Status" role="cell" style={td}>{statusBadge(log?.status || r.status)}</td>
+                <td data-label="Customer Health" role="cell" style={td}>{healthBadge(customer)}</td>
+                <td data-label="Fails" role="cell" style={td}>{customer?.marketing_fail_count || 0}</td>
+                <td data-label="Reason" role="cell" style={td}>
                   {log?.error ||
                     customer?.last_marketing_fail_reason ||
                     r.reason ||
                     "-"}
                 </td>
-                <td style={td}>{customer?.total_replies || 0}</td>
-                <td style={td}>{customer?.total_orders || 0}</td>
-                <td style={td}>
+                <td data-label="Replies" role="cell" style={td}>{customer?.total_replies || 0}</td>
+                <td data-label="Orders" role="cell" style={td}>{customer?.total_orders || 0}</td>
+                <td data-label="Chat" role="cell" style={td}>
                   <Link href={`/inbox/${r.phone}`}>Open</Link>
                 </td>
               </tr>
             );
           })}
         </tbody>
-      </table>
+      </table></div>
     </main>
   );
 }

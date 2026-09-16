@@ -150,7 +150,7 @@ export default async function OrderDetailPage({
     <main style={{ padding: 24, background: "#fafafa", minHeight: "100vh" }}>
       <Header active="orders" back={{ href: "/orders", label: "Orders" }} />
 
-      <div style={{ display: "flex", justifyContent: "space-between" }}>
+      <div className="responsive-row" style={{ display: "flex", justifyContent: "space-between" }}>
         <div>
           <h1>Order {order.order_number}</h1>
           <p style={{ color: "#666" }}>
@@ -158,7 +158,7 @@ export default async function OrderDetailPage({
           </p>
         </div>
 
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <div className="responsive-row" style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <StatusBadge value={order.payment_status} />
           <StatusBadge value={order.shipping_status} />
           {isPartialCod && order.cod_balance_status === "pending" && (
@@ -233,7 +233,7 @@ export default async function OrderDetailPage({
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 16 }}>
+      <div className="responsive-grid" style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 16 }}>
         <section style={card}>
           <h2>Customer</h2>
           <Info label="Name" value={order.customer_name} />
@@ -293,22 +293,22 @@ export default async function OrderDetailPage({
       <section style={{ ...card, marginTop: 16 }}>
         <h2>Items</h2>
 
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              <th style={th}>Product</th>
-              <th style={th}>Quantity</th>
-              <th style={th}>Price</th>
+        <div className="table-scroll" role="region" aria-label="Scrollable records" tabIndex={0}><table role="table" className="mobile-table" style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead role="rowgroup">
+            <tr role="row">
+              <th role="columnheader" scope="col" style={th}>Product</th>
+              <th role="columnheader" scope="col" style={th}>Quantity</th>
+              <th role="columnheader" scope="col" style={th}>Price</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody role="rowgroup">
             {items.map((item: any, index: number) => (
-              <tr key={index}>
-                <td style={td}>
+              <tr role="row" key={index}>
+                <td data-label="Product" role="cell" style={td}>
                   {item.name || item.title || item.product || item.product_name || "Item"}
                 </td>
-                <td style={td}>{item.quantity || item.qty || 1}</td>
-                <td style={td}>
+                <td data-label="Quantity" role="cell" style={td}>{item.quantity || item.qty || 1}</td>
+                <td data-label="Price" role="cell" style={td}>
                   {item.price_in_paise
                     ? formatINR(item.price_in_paise)
                     : item.price
@@ -318,7 +318,7 @@ export default async function OrderDetailPage({
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
 
         {items.length === 0 && <p style={{ color: "#777" }}>No items found.</p>}
       </section>
@@ -376,7 +376,7 @@ export default async function OrderDetailPage({
         <form action="/api/orders/set-waybill" method="POST" style={{ marginBottom: 16 }}>
           <input type="hidden" name="id" value={order.id} />
           <label style={{ fontSize: 12, color: "#777" }}>Waybill / AWB Number</label>
-          <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+          <div className="responsive-row" style={{ display: "flex", gap: 8, marginTop: 6 }}>
             <input
               name="delhivery_waybill"
               defaultValue={order.delhivery_waybill || ""}
@@ -422,7 +422,7 @@ export default async function OrderDetailPage({
             />
 
             <form action={`/api/orders/${order.id}/sync-delhivery`} method="POST">
-              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+              <div className="responsive-row" style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
                 <button
                   type="submit"
                   style={{
@@ -456,7 +456,7 @@ export default async function OrderDetailPage({
         <form action="/api/orders/set-shiprocket-waybill" method="POST" style={{ marginBottom: 16 }}>
           <input type="hidden" name="id" value={order.id} />
           <label style={{ fontSize: 12, color: "#777" }}>Waybill / AWB Number</label>
-          <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+          <div className="responsive-row" style={{ display: "flex", gap: 8, marginTop: 6 }}>
             <input
               name="shiprocket_waybill"
               defaultValue={order.shiprocket_waybill || ""}
@@ -530,7 +530,7 @@ export default async function OrderDetailPage({
             />
 
             <form action={`/api/orders/${order.id}/sync-shiprocket`} method="POST">
-              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+              <div className="responsive-row" style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
                 <button
                   type="submit"
                   style={{
@@ -561,7 +561,7 @@ export default async function OrderDetailPage({
         )}
 
         {(history || []).map((h: any, index: number) => (
-          <div
+          <div className="responsive-row"
             key={h.id}
             style={{
               display: "flex",
@@ -591,7 +591,7 @@ export default async function OrderDetailPage({
         <form action="/api/orders/update" method="POST">
           <input type="hidden" name="id" value={order.id} />
 
-          <div
+          <div className="responsive-grid"
             style={{
               display: "grid",
               gridTemplateColumns: isPartialCod ? "1fr 1fr 1fr" : "1fr 1fr",

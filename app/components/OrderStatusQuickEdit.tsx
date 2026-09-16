@@ -57,6 +57,7 @@ export default function OrderStatusQuickEdit({
       <input type="hidden" name="return_to" value={returnTo} />
 
       <select
+        aria-label="Fulfillment status"
         name="shipping_status"
         defaultValue={currentStatus}
         disabled={saving}

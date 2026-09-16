@@ -48,4 +48,4 @@
 .stockCard .stockLow { background: #fff4dc; color: #991b1b; }
 @media (max-width: 1050px) { .kpis { grid-template-columns: repeat(2, 1fr); } .mainGrid { grid-template-columns: 1fr; } .stockGrid { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 650px) { .page { padding: 16px 12px 32px; } .heading { align-items: flex-start; flex-direction: column; } .heading h1 { font-size: 28px; } .primaryButton { width: 100%; justify-content: center; } .kpis { grid-template-columns: 1fr 1fr; } .kpi { min-height: 116px; padding: 14px; } .kpi strong { font-size: 24px; } .orderRow { grid-template-columns: 28px minmax(0, 1fr); padding: 13px; } .orderMeta { grid-column: 2; flex-direction: row; align-items: center; justify-content: space-between; } .stockGrid { grid-template-columns: repeat(2, 1fr); padding: 12px; } }
-@media (max-width: 400px) { .kpis { grid-template-columns: 1fr; } .stockGrid { grid-template-columns: 1fr; } }
+@media (max-width: 360px) { .kpi { padding: 12px; } .kpi strong { font-size: 22px; } .stockGrid { grid-template-columns: 1fr; } }
