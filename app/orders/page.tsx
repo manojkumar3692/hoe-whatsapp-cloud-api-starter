@@ -13,17 +13,7 @@ import styles from "./orders.module.css";
 
 export const dynamic = "force-dynamic";
 
-const UNSHIPPED_STATUSES = ["pending", "confirmed", "packed"];
-
-// The storefront writes a row into `orders` the instant checkout starts
-// (as soon as the Razorpay order is created) — not after payment actually
-// succeeds. If the customer never completes payment, payment_status stays
-// one of these forever, and the "order" is really just an abandoned
-// checkout wearing an order_number. Nothing needs to be fulfilled until
-// payment_status flips to 'paid', so these are kept out of Needs Action
-// and shown in their own recovery tab instead — see "Abandoned Checkouts"
-// below and lib/delhiverySync.ts-adjacent conversation history.
-const ABANDONED_PAYMENT_STATUSES = ["pending", "failed"];
+import { UNSHIPPED_STATUSES, ABANDONED_PAYMENT_STATUSES, REAL_ORDERS_FILTER, orderView, ordersQuery, dubaiDateKey } from "../../lib/ordersQuery";
 
 function formatINR(paise: number) {
   return `₹${((paise || 0) / 100).toLocaleString("en-IN", {
@@ -206,36 +196,6 @@ function itemsPreview(items: any) {
   );
 }
 
-function getStartDate(range?: string) {
-  const now = new Date();
-
-  if (range === "today") {
-    now.setHours(0, 0, 0, 0);
-    return now.toISOString();
-  }
-
-  if (range === "7days") {
-    now.setDate(now.getDate() - 7);
-    return now.toISOString();
-  }
-
-  if (range === "month") {
-    now.setDate(1);
-    now.setHours(0, 0, 0, 0);
-    return now.toISOString();
-  }
-
-  return null;
-}
-
-function parseDateBoundary(value: string | undefined, endOfDay = false) {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const date = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return null;
-  if (endOfDay) date.setDate(date.getDate() + 1);
-  return date.toISOString();
-}
-
 function formatDateRange(from?: string, to?: string, preset?: string) {
   if (from || to) {
     const format = (value: string) =>
@@ -252,15 +212,6 @@ function formatDateRange(from?: string, to?: string, preset?: string) {
   if (preset === "7days") return "Last 7 days";
   if (preset === "month") return "This month";
   return "All dates";
-}
-
-function dubaiDateKey(value: string | Date) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Dubai",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date(value));
 }
 
 function orderDayLabel(value: string) {
@@ -325,14 +276,7 @@ export default async function OrdersPage({
   const params = await searchParams;
   const supabase = supabaseAdmin();
 
-  const isHiddenReview = params.show_hidden === "1";
-  // Keep the old payment_pending URL working for bookmarked links, but use
-  // the accurate "abandoned payment" language everywhere in the UI.
-  const isAbandonedPaymentView = ["payment_pending", "abandoned_payment"].includes(params.view || "") && !isHiddenReview;
-  const isCodBalancePendingView = params.view === "cod_balance_pending" && !isHiddenReview;
-  const isDeliveredView = params.view === "delivered" && !isHiddenReview;
-  const isDeliveryIssuesView = params.view === "delivery_issues" && !isHiddenReview;
-  const isAllView = params.view === "all" || isHiddenReview;
+  const { isHiddenReview, isAbandonedPaymentView, isCodBalancePendingView, isDeliveredView, isDeliveryIssuesView, isAllView } = orderView(params);
   // Only show the "All Orders"-only filter fields (Order Status, Coupon)
   // when actually in All Orders mode — in the hidden-orders review list
   // those filters don't apply to anything, so hide them rather than show
@@ -388,7 +332,7 @@ export default async function OrdersPage({
       .eq("cod_balance_status", "pending")
       .not("shipping_status", "in", "(cancelled,returned,refunded,rejected)"),
     supabase.from("orders").select("*", { count: "exact", head: true }).eq("is_hidden", true),
-    supabase.from("orders").select("*", { count: "exact", head: true }).eq("is_hidden", false),
+    supabase.from("orders").select("*", { count: "exact", head: true }).eq("is_hidden", false).or(REAL_ORDERS_FILTER),
     supabase
       .from("orders")
       .select("*", { count: "exact", head: true })
@@ -422,66 +366,7 @@ export default async function OrdersPage({
 
   // Today is shown first, followed by yesterday and older work. Age remains
   // visible so old paid orders cannot disappear inside the queue.
-  let query = supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(300);
-
-  if (isHiddenReview) {
-    query = query.eq("is_hidden", true);
-  } else {
-    query = query.eq("is_hidden", false);
-
-    if (isAbandonedPaymentView) {
-      // Only orders that are BOTH unpaid AND still unshipped — if fulfillment
-      // already moved past packed (shipped/delivered/etc.), payment was
-      // confirmed some other way even though our payment_status field never
-      // got updated (the storefront's payment callback is browser-only, not
-      // a server webhook — see conversation history). That's a stale field
-      // to go fix, not a live abandoned checkout to chase down.
-      query = query.in("payment_status", ABANDONED_PAYMENT_STATUSES).in("shipping_status", UNSHIPPED_STATUSES);
-    } else if (isCodBalancePendingView) {
-      query = query
-        .eq("payment_status", "paid")
-        .eq("payment_type", "partial_cod")
-        .eq("cod_balance_status", "pending")
-        .not("shipping_status", "in", "(cancelled,returned,refunded,rejected)");
-    } else if (isDeliveredView) {
-      query = query.eq("payment_status", "paid").in("shipping_status", ["delivered", "completed"]);
-    } else if (isDeliveryIssuesView) {
-      query = query.eq("shipping_status", "delivery_disputed");
-    } else if (isAllView) {
-      if (params.shipping) {
-        query = query.eq("shipping_status", params.shipping);
-      }
-    } else {
-      // Operations view: load paid orders, then retain all of today and
-      // yesterday plus any older order that still needs fulfilment. This
-      // keeps recent work understandable without losing an old backlog.
-      query = query.eq("payment_status", "paid");
-    }
-  }
-
-  if (params.payment) {
-    query = query.eq("payment_status", params.payment);
-  }
-
-  if (params.payment_type) {
-    query = query.eq("payment_type", params.payment_type);
-  }
-
-  if (params.coupon) {
-    query = query.eq("coupon_code", params.coupon);
-  }
-
-  const startDate = parseDateBoundary(params.date_from) || getStartDate(params.date);
-  const endDate = parseDateBoundary(params.date_to, true);
-  if (startDate) query = query.gte("created_at", startDate);
-  if (endDate) query = query.lt("created_at", endDate);
-
-  if (params.q?.trim()) {
-    const search = params.q.trim().replace(/[,%()]/g, " ");
-    query = query.or(
-      `order_number.ilike.%${search}%,customer_name.ilike.%${search}%,customer_phone.ilike.%${search}%,customer_email.ilike.%${search}%,customer_city.ilike.%${search}%`
-    );
-  }
+  const query = ordersQuery(params).limit(300);
 
   const paidOrderCustomersPromise = supabase
     .from("orders")
@@ -521,14 +406,7 @@ export default async function OrdersPage({
     return sum + (o.token_amount_in_paise || 0);
   }, 0);
 
-  const orders = !isAllView && !isHiddenReview && !isAbandonedPaymentView && !isCodBalancePendingView && !isDeliveredView && !isDeliveryIssuesView
-    ? (rawOrders || []).filter((order: any) => {
-        const day = dubaiDateKey(order.created_at);
-        const today = dubaiDateKey(new Date());
-        const yesterday = dubaiDateKey(new Date(Date.now() - 24 * 60 * 60 * 1000));
-        return day === today || day === yesterday || UNSHIPPED_STATUSES.includes(order.shipping_status);
-      })
-    : rawOrders || [];
+  const orders = rawOrders || [];
 
   if (error) {
     return (
@@ -601,7 +479,7 @@ export default async function OrdersPage({
     ? "/orders?view=abandoned_payment"
     : isCodBalancePendingView
     ? "/orders?view=cod_balance_pending"
-    : "/orders";
+    : "/orders?view=operations";
 
   const viewDescription = isHiddenReview
     ? "Test and spam records kept out of the live workflow."
@@ -614,7 +492,7 @@ export default async function OrdersPage({
     : isDeliveryIssuesView
     ? "Customers who reported non-receipt even though the courier may show delivered. Resolve these before closing them."
     : isAllView
-    ? "Search and audit the complete order history."
+    ? "Search and audit all orders. Abandoned checkouts are kept in their own tab."
     : "All paid orders from today and yesterday, followed by any older order still waiting for fulfilment.";
 
   return (
@@ -693,8 +571,12 @@ export default async function OrdersPage({
       <section className={styles.workspace}>
       <div className={styles.queueBar}>
         <span className={styles.queueLabel}>Work queue</span>
+        <Link href={tabHref({ view: "all" })} style={tabStyle(isAllView && !isHiddenReview)}>
+          All Orders ({visibleTotalCount || 0})
+        </Link>
+
         <Link
-          href={tabHref({})}
+          href={tabHref({ view: "operations" })}
           style={tabStyle(!isAllView && !isHiddenReview && !isAbandonedPaymentView && !isCodBalancePendingView && !isDeliveredView && !isDeliveryIssuesView)}
         >
           Operations — Paid ({needsActionCount || 0} ready)
@@ -711,9 +593,6 @@ export default async function OrdersPage({
         >
           COD Balance Pending ({codBalancePendingCount || 0})
         </Link>
-        <Link href={tabHref({ view: "all" })} style={tabStyle(isAllView && !isHiddenReview)}>
-          All Orders ({visibleTotalCount || 0})
-        </Link>
         <Link href={tabHref({ view: "delivered" })} style={tabStyle(isDeliveredView)}>
           Delivered ({deliveredCount || 0})
         </Link>
@@ -721,6 +600,7 @@ export default async function OrdersPage({
           ⚠ Delivery issues ({deliveryIssuesCount || 0})
         </Link>
         <div className={styles.queueSpacer} />
+        <a href={`/api/orders/export?${returnToQuery}`} style={tabStyle(false)}>Download Excel</a>
         <CourierRefresh className={styles.syncForm} />
         <Link href={tabHref({ show_hidden: "1" })} style={tabStyle(isHiddenReview, true)}>
           🙈 Test/Hidden ({hiddenCount || 0})
