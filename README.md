@@ -186,3 +186,9 @@ npm run dev
 - Send to small batches first.
 - Keep opt-out/STOP handling before doing large campaigns.
 - This is a starter project; add proper login before real production use.
+
+## Mobile dashboard and order alerts
+
+The dashboard supports phone and tablet layouts. See
+[mobile and push setup](docs/mobile-and-push.md) for enabling paid-order push
+notifications, Home Screen installation on iPhone, and delivery verification.

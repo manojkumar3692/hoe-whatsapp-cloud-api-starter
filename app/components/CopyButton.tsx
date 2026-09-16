@@ -25,6 +25,7 @@ export default function CopyButton({ text }: { text: string }) {
         }
       }}
       title="Copy phone number"
+      aria-label={copied ? "Phone number copied" : "Copy phone number"}
       style={{
         border: "none",
         background: "transparent",

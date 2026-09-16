@@ -94,13 +94,13 @@ export default async function Home() {
           <h1>Today at House of Eon</h1>
           <p>{new Date().toLocaleDateString("en-IN", { timeZone: "Asia/Dubai", weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p>
         </div>
-        <Link className={styles.primaryButton} href="/orders">Open paid order queue →</Link>
+        <Link className={styles.primaryButton} href="/orders?view=operations">Open paid order queue →</Link>
       </section>
 
       <section className={styles.kpis} aria-label="Today’s sales summary">
         <Kpi label="Paid orders today" value={String(paidToday.length)} note="Confirmed sales only" tone="green" href="/orders?view=all&payment=paid&date=today" />
         <Kpi label="Revenue today" value={formatINR(todayRevenue)} note="From paid orders" tone="blue" href="/orders?view=all&payment=paid&date=today" />
-        <Kpi label="Ready to fulfil" value={String(readyCount || 0)} note="Paid and not shipped" tone="amber" href="/orders" />
+        <Kpi label="Ready to fulfil" value={String(readyCount || 0)} note="Paid and not shipped" tone="amber" href="/orders?view=operations" />
         <Kpi label="Revenue this month" value={formatINR(monthRevenue)} note={`${(monthOrders || []).length} paid orders`} tone="purple" href="/orders?view=all&payment=paid&date=month" />
       </section>
 
@@ -108,7 +108,7 @@ export default async function Home() {
         <section className={styles.panel}>
           <div className={styles.panelHeader}>
             <div><p className={styles.sectionLabel}>Do this next</p><h2>Paid orders ready to fulfil</h2><p>Oldest paid order appears first.</p></div>
-            <Link href="/orders">View all {readyCount || 0}</Link>
+            <Link href="/orders?view=operations">View all {readyCount || 0}</Link>
           </div>
           <div className={styles.orderList}>
             {(readyOrders || []).map((order: any, index: number) => (

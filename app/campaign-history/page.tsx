@@ -127,30 +127,30 @@ export default async function CampaignHistory() {
           marginTop: 20,
         }}
       >
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead style={{ background: "#f9fafb" }}>
-            <tr>
-              <th style={th}>Campaign</th>
-              <th style={th}>Status</th>
-              <th style={th}>Template</th>
-              <th style={th}>Audience</th>
-              <th style={th}>Sent</th>
-              <th style={th}>Delivered</th>
-              <th style={th}>Read</th>
-              <th style={th}>Failed</th>
-              <th style={th}>Replies</th>
-              <th style={th}>Orders</th>
-              <th style={th}>Revenue</th>
-              <th style={th}>Date</th>
-              <th style={th}>Date</th>
+        <div className="table-scroll" role="region" aria-label="Scrollable records" tabIndex={0}><table role="table" className="mobile-table" style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead role="rowgroup" style={{ background: "#f9fafb" }}>
+            <tr role="row">
+              <th role="columnheader" scope="col" style={th}>Campaign</th>
+              <th role="columnheader" scope="col" style={th}>Status</th>
+              <th role="columnheader" scope="col" style={th}>Template</th>
+              <th role="columnheader" scope="col" style={th}>Audience</th>
+              <th role="columnheader" scope="col" style={th}>Sent</th>
+              <th role="columnheader" scope="col" style={th}>Delivered</th>
+              <th role="columnheader" scope="col" style={th}>Read</th>
+              <th role="columnheader" scope="col" style={th}>Failed</th>
+              <th role="columnheader" scope="col" style={th}>Replies</th>
+              <th role="columnheader" scope="col" style={th}>Orders</th>
+              <th role="columnheader" scope="col" style={th}>Revenue</th>
+              <th role="columnheader" scope="col" style={th}>Date</th>
+              <th role="columnheader" scope="col" style={th}>Date</th>
               
             </tr>
           </thead>
 
-          <tbody>
+          <tbody role="rowgroup">
             {rows.map((row) => (
-              <tr key={row.campaign.id}>
-                <td style={td}>
+              <tr role="row" key={row.campaign.id}>
+                <td data-label="Campaign" role="cell" style={td}>
                   <b>{row.campaign.name}</b>
                   {row.campaign.status === "draft" && (
                     <div style={{ color: "#92400e", fontSize: 12 }}>
@@ -158,37 +158,37 @@ export default async function CampaignHistory() {
                     </div>
                   )}
                 </td>
-                <td style={td}>{badge(row.campaign.status)}</td>
-                <td style={td}>{row.campaign.template_name}</td>
-                <td style={td}>{row.campaign.total_recipients}</td>
-                <td style={td}>{row.sent}</td>
-                <td style={td}>
+                <td data-label="Status" role="cell" style={td}>{badge(row.campaign.status)}</td>
+                <td data-label="Template" role="cell" style={td}>{row.campaign.template_name}</td>
+                <td data-label="Audience" role="cell" style={td}>{row.campaign.total_recipients}</td>
+                <td data-label="Sent" role="cell" style={td}>{row.sent}</td>
+                <td data-label="Delivered" role="cell" style={td}>
                   {row.delivered}
                   <div style={small}>{row.deliveryRate}%</div>
                 </td>
-                <td style={td}>
+                <td data-label="Read" role="cell" style={td}>
                   {row.read}
                   <div style={small}>{row.readRate}%</div>
                 </td>
-                <td style={td}>{row.failed}</td>
-                <td style={td}>
+                <td data-label="Failed" role="cell" style={td}>{row.failed}</td>
+                <td data-label="Replies" role="cell" style={td}>
                   {row.replies}
                   <div style={small}>{row.replyRate}%</div>
                 </td>
-                <td style={td}>{row.ordersCount}</td>
-                <td style={td}>
+                <td data-label="Orders" role="cell" style={td}>{row.ordersCount}</td>
+                <td data-label="Revenue" role="cell" style={td}>
                   <b>{formatINR(row.revenue)}</b>
                 </td>
-                <td style={td}>
+                <td data-label="Date" role="cell" style={td}>
                   {new Date(row.campaign.created_at).toLocaleString()}
                 </td>
-                <td style={td}>
+                <td data-label="Date" role="cell" style={td}>
   <Link href={`/campaign-history/${row.campaign.id}`}>Action</Link>
 </td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </div>
     </main>
   );

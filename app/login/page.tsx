@@ -3,12 +3,12 @@ export const dynamic = "force-dynamic";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string; error?: string }>;
+  searchParams: Promise<{ next?: string; error?: string; alerts?: string }>;
 }) {
   const params = await searchParams;
 
   return (
-    <main
+    <main className="responsive-row"
       style={{
         minHeight: "100vh",
         background: "#fafafa",
@@ -29,7 +29,7 @@ export default async function LoginPage({
           padding: 32,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24 }}>
+        <div className="responsive-row" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24 }}>
           <span
             style={{
               width: 40,
@@ -61,6 +61,13 @@ export default async function LoginPage({
         <p style={{ color: "#777", fontSize: 13, marginBottom: 20 }}>
           Sign in to access the dashboard.
         </p>
+
+        {params.alerts === "still-enabled" && (
+          <p role="alert" style={{ color: "#991b1b", fontSize: 14 }}>
+            You are signed out, but order alerts could not be disabled. Block this site’s
+            notifications in your phone or browser settings, or sign in and disable alerts again.
+          </p>
+        )}
 
         {params.error === "1" && (
           <div

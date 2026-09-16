@@ -61,7 +61,7 @@ function sourceBadge(source: string) {
 function tagChips(tags: string[]) {
   if (!tags || tags.length === 0) return "-";
   return (
-    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+    <div className="responsive-row" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
       {tags.map((t) =>
         t === "abandoned_cart"
           ? <span key={t}>{badge("🛒 Abandoned Cart", "#ffedd5", "#9a3412")}</span>
@@ -233,7 +233,7 @@ export default async function Customers({
         </div>
       )}
 
-      <div
+      <div className="responsive-grid"
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(6, 1fr)",
@@ -249,7 +249,7 @@ export default async function Customers({
         <Stat title="Lifetime Value" value={formatINR(lifetimeValueSum)} accent="#7c3aed" />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 24 }}>
+      <div className="responsive-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 24 }}>
         <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14, padding: 20 }}>
           <h2 style={{ marginTop: 0 }}>Import Customers</h2>
           <p style={{ color: "#666", fontSize: 14 }}>CSV Headers: <b>name, phone, product, city</b></p>
@@ -279,7 +279,7 @@ export default async function Customers({
         </div>
       </div>
 
-      <form
+      <form className="responsive-grid"
         method="GET"
         style={{
           background: "#fff",
@@ -329,26 +329,26 @@ export default async function Customers({
 
       <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14, overflow: "hidden" }}>
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
-            <thead style={{ background: "#f9fafb" }}>
-              <tr>
-                <th style={th}>Customer</th>
-                <th style={th}>Health</th>
-                <th style={th}>Source</th>
-                <th style={th}>Product / City</th>
-                <th style={th}>Orders</th>
-                <th style={th}>Value</th>
-                <th style={th}>Tags</th>
-                <th style={th}>Last Message</th>
-                <th style={th}>View</th>
+          <table role="table" className="mobile-table" style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
+            <thead role="rowgroup" style={{ background: "#f9fafb" }}>
+              <tr role="row">
+                <th role="columnheader" scope="col" style={th}>Customer</th>
+                <th role="columnheader" scope="col" style={th}>Health</th>
+                <th role="columnheader" scope="col" style={th}>Source</th>
+                <th role="columnheader" scope="col" style={th}>Product / City</th>
+                <th role="columnheader" scope="col" style={th}>Orders</th>
+                <th role="columnheader" scope="col" style={th}>Value</th>
+                <th role="columnheader" scope="col" style={th}>Tags</th>
+                <th role="columnheader" scope="col" style={th}>Last Message</th>
+                <th role="columnheader" scope="col" style={th}>View</th>
               </tr>
             </thead>
 
-            <tbody>
+            <tbody role="rowgroup">
               {customers.map((c: any) => (
-                <tr key={c.id}>
-                  <td style={td}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <tr role="row" key={c.id}>
+                  <td data-label="Customer" role="cell" style={td}>
+                    <div className="responsive-row" style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       {avatar(c.name)}
                       <div>
                         <div style={{ fontWeight: 700 }}>{c.name}</div>
@@ -356,27 +356,27 @@ export default async function Customers({
                       </div>
                     </div>
                   </td>
-                  <td style={td}>{healthBadge(c)}</td>
-                  <td style={td}>{sourceBadge(c.source)}</td>
-                  <td style={td}>
+                  <td data-label="Health" role="cell" style={td}>{healthBadge(c)}</td>
+                  <td data-label="Source" role="cell" style={td}>{sourceBadge(c.source)}</td>
+                  <td data-label="Product / City" role="cell" style={td}>
                     <div>{c.product || "-"}</div>
                     <div style={{ color: "#888", fontSize: 12 }}>{c.city || ""}</div>
                   </td>
-                  <td style={td}>{c.total_orders || 0}</td>
-                  <td style={td}><b>{formatINR(c.lifetime_value_in_paise)}</b></td>
-                  <td style={td}>{tagChips(c.tags)}</td>
-                  <td style={td}>
+                  <td data-label="Orders" role="cell" style={td}>{c.total_orders || 0}</td>
+                  <td data-label="Value" role="cell" style={td}><b>{formatINR(c.lifetime_value_in_paise)}</b></td>
+                  <td data-label="Tags" role="cell" style={td}>{tagChips(c.tags)}</td>
+                  <td data-label="Last Message" role="cell" style={td}>
                     {c.last_message_at ? new Date(c.last_message_at).toLocaleDateString() : "-"}
                   </td>
-                  <td style={td}>
+                  <td data-label="View" role="cell" style={td}>
                     <Link href={`/customers/${c.id}`}>View</Link>
                   </td>
                 </tr>
               ))}
 
               {customers.length === 0 && (
-                <tr>
-                  <td style={td} colSpan={9}>No customers match these filters.</td>
+                <tr role="row">
+                  <td role="cell" style={td} colSpan={9}>No customers match these filters.</td>
                 </tr>
               )}
             </tbody>

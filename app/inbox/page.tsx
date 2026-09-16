@@ -246,7 +246,7 @@ export default async function InboxPage({
           to run more than once.
         </p>
 
-        <form
+        <form className="responsive-row"
           action="/api/admin/backfill-message-bodies"
           method="POST"
           style={{ display: "flex", gap: 10, flexWrap: "wrap" }}
@@ -275,7 +275,7 @@ export default async function InboxPage({
         </form>
       </details>
 
-      <div
+      <div className="responsive-grid"
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(3, 1fr)",
@@ -288,7 +288,7 @@ export default async function InboxPage({
         <Stat title="Sent by Us" value={outboundCount} accent="#7c3aed" />
       </div>
 
-      <form
+      <form className="responsive-grid"
         method="GET"
         style={{
           background: "#fff",
@@ -389,8 +389,8 @@ export default async function InboxPage({
             {avatar(customer?.name || chat.phone)}
 
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+              <div className="responsive-row" style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <div className="responsive-row" style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                   <strong style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {customer?.name || "Unknown"}
                   </strong>

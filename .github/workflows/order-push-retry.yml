@@ -1,0 +1,27 @@
+name: Retry Order Push Notifications
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+permissions: {}
+concurrency:
+  group: order-push-retry
+  cancel-in-progress: false
+
+jobs:
+  retry:
+    # Opt in after the migration, VAPID keys and fast-path webhook are configured.
+    if: vars.ENABLE_ORDER_PUSH == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Drain queued order alerts
+        env:
+          APP_BASE_URL: ${{ secrets.APP_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl --silent --show-error --fail --max-time 65 \
+            "${APP_BASE_URL%/}/api/push/dispatch" \
+            -H "Authorization: Bearer ${CRON_SECRET}"

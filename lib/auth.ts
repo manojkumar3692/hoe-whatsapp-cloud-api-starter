@@ -19,6 +19,7 @@ export function requireAdmin(req: NextRequest){
 // etc.) later without touching anything outside this file + middleware.ts.
 // ------------------------------------------------------------------
 
+export const PUSH_DEVICE_COOKIE = "hoe_push_endpoint";
 export const SESSION_COOKIE = "hoe_admin_session";
 export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 days
 

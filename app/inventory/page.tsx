@@ -40,7 +40,7 @@ export default async function InventoryPage({
     <main>
       <Header active="inventory" />
 
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "baseline", flexWrap: "wrap" }}>
+      <div className="responsive-row" style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "baseline", flexWrap: "wrap" }}>
         <div>
           <h1 style={{ margin: 0 }}>Inventory</h1>
           <p className="muted" style={{ margin: "5px 0 20px" }}>
@@ -79,12 +79,12 @@ export default async function InventoryPage({
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14 }}>
+      <div className="responsive-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14 }}>
         {(skus || []).map((sku: any) => {
           const tone = stockTone(sku.current_stock, sku.low_stock_threshold);
           return (
             <section key={sku.id} className="card" style={{ borderTop: `4px solid ${tone.color}` }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+              <div className="responsive-row" style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                 <div>
                   <div style={{ fontSize: 18, fontWeight: 800 }}>{sku.product_name}</div>
                   <div className="muted" style={{ fontSize: 13 }}>{sku.size.toUpperCase()} · {sku.sku}</div>
@@ -145,29 +145,29 @@ export default async function InventoryPage({
 
       <section className="card" style={{ marginTop: 24, overflowX: "auto" }}>
         <h2 style={{ marginTop: 0 }}>Recent stock movements</h2>
-        <table>
-          <thead>
-            <tr><th>When</th><th>SKU</th><th>Change</th><th>Balance</th><th>Source / reason</th></tr>
+        <table role="table" className="mobile-table">
+          <thead role="rowgroup">
+            <tr role="row"><th role="columnheader" scope="col">When</th><th role="columnheader" scope="col">SKU</th><th role="columnheader" scope="col">Change</th><th role="columnheader" scope="col">Balance</th><th role="columnheader" scope="col">Source / reason</th></tr>
           </thead>
-          <tbody>
+          <tbody role="rowgroup">
             {(movements || []).map((movement: any) => {
               const sku = Array.isArray(movement.inventory_skus) ? movement.inventory_skus[0] : movement.inventory_skus;
               return (
-                <tr key={movement.id}>
-                  <td style={{ whiteSpace: "nowrap" }}>{new Date(movement.created_at).toLocaleString("en-IN")}</td>
-                  <td><strong>{sku?.product_name}</strong><div className="muted" style={{ fontSize: 12 }}>{sku?.size?.toUpperCase()}</div></td>
-                  <td style={{ fontWeight: 800, color: movement.quantity_delta < 0 ? "#991b1b" : "#166534" }}>
+                <tr role="row" key={movement.id}>
+                  <td data-label="When" role="cell" style={{ whiteSpace: "nowrap" }}>{new Date(movement.created_at).toLocaleString("en-IN")}</td>
+                  <td data-label="SKU" role="cell"><strong>{sku?.product_name}</strong><div className="muted" style={{ fontSize: 12 }}>{sku?.size?.toUpperCase()}</div></td>
+                  <td data-label="Change" role="cell" style={{ fontWeight: 800, color: movement.quantity_delta < 0 ? "#991b1b" : "#166534" }}>
                     {movement.quantity_delta > 0 ? "+" : ""}{movement.quantity_delta}
                   </td>
-                  <td>{movement.resulting_stock}</td>
-                  <td>
+                  <td data-label="Balance" role="cell">{movement.resulting_stock}</td>
+                  <td data-label="Source / reason" role="cell">
                     {movement.order_number ? <Link href={`/orders?q=${encodeURIComponent(movement.order_number)}`}>{movement.order_number}</Link> : movement.reason}
                     {movement.order_number && <div className="muted" style={{ fontSize: 12 }}>{movement.reason}</div>}
                   </td>
                 </tr>
               );
             })}
-            {(!movements || movements.length === 0) && <tr><td colSpan={5} className="muted">No stock movements yet.</td></tr>}
+            {(!movements || movements.length === 0) && <tr role="row"><td role="cell" colSpan={5} className="muted">No stock movements yet.</td></tr>}
           </tbody>
         </table>
       </section>

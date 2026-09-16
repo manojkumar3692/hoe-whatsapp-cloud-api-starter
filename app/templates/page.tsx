@@ -82,7 +82,7 @@ export default async function TemplatesPage({
       >
         <h2 style={{ marginTop: 0 }}>Create a new template</h2>
 
-        <form
+        <form className="responsive-grid"
           action="/api/templates/create"
           method="post"
           style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}
@@ -276,7 +276,7 @@ export default async function TemplatesPage({
         </form>
       </div>
 
-      <div
+      <div className="responsive-row"
         style={{
           display: "flex",
           justifyContent: "space-between",
@@ -286,7 +286,7 @@ export default async function TemplatesPage({
       >
         <h2 style={{ margin: 0 }}>Submitted templates</h2>
 
-        <form action="/api/templates/sync" method="post" style={{ display: "flex", gap: 8 }}>
+        <form className="responsive-row" action="/api/templates/sync" method="post" style={{ display: "flex", gap: 8 }}>
           <input
             name="admin_password"
             type="password"
@@ -318,43 +318,43 @@ export default async function TemplatesPage({
           overflow: "hidden",
         }}
       >
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead style={{ background: "#f9fafb" }}>
-            <tr>
-              <th style={th}>Name</th>
-              <th style={th}>Category</th>
-              <th style={th}>Language</th>
-              <th style={th}>Status</th>
-              <th style={th}>Rejection reason</th>
-              <th style={th}>Created</th>
+        <div className="table-scroll" role="region" aria-label="Scrollable records" tabIndex={0}><table role="table" className="mobile-table" style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead role="rowgroup" style={{ background: "#f9fafb" }}>
+            <tr role="row">
+              <th role="columnheader" scope="col" style={th}>Name</th>
+              <th role="columnheader" scope="col" style={th}>Category</th>
+              <th role="columnheader" scope="col" style={th}>Language</th>
+              <th role="columnheader" scope="col" style={th}>Status</th>
+              <th role="columnheader" scope="col" style={th}>Rejection reason</th>
+              <th role="columnheader" scope="col" style={th}>Created</th>
             </tr>
           </thead>
 
-          <tbody>
+          <tbody role="rowgroup">
             {(templates || []).map((t: any) => (
-              <tr key={t.id}>
-                <td style={td}>
+              <tr role="row" key={t.id}>
+                <td data-label="Name" role="cell" style={td}>
                   <b>{t.name}</b>
                 </td>
-                <td style={td}>{t.category}</td>
-                <td style={td}>{t.language}</td>
-                <td style={td}>{statusBadge(t.status)}</td>
-                <td style={td}>{t.rejected_reason || "-"}</td>
-                <td style={td}>
+                <td data-label="Category" role="cell" style={td}>{t.category}</td>
+                <td data-label="Language" role="cell" style={td}>{t.language}</td>
+                <td data-label="Status" role="cell" style={td}>{statusBadge(t.status)}</td>
+                <td data-label="Rejection reason" role="cell" style={td}>{t.rejected_reason || "-"}</td>
+                <td data-label="Created" role="cell" style={td}>
                   {new Date(t.created_at).toLocaleString()}
                 </td>
               </tr>
             ))}
 
             {(!templates || templates.length === 0) && (
-              <tr>
-                <td style={td} colSpan={6}>
+              <tr role="row">
+                <td role="cell" style={td} colSpan={6}>
                   No templates submitted yet.
                 </td>
               </tr>
             )}
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       {error && (

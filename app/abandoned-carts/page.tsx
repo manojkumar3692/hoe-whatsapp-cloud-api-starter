@@ -260,7 +260,7 @@ export default async function AbandonedCartsPage({
         checkout and stop being attempted after {MAX_AGE_HOURS}h.
       </p>
 
-      <div
+      <div className="responsive-grid"
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(4, 1fr)",
@@ -274,7 +274,7 @@ export default async function AbandonedCartsPage({
         <Stat title="Pending / Not Due" value={(counts.pending || 0) + (counts.not_due || 0)} accent="#d97706" />
       </div>
 
-      <div
+      <div className="responsive-grid"
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(3, 1fr)",
@@ -287,7 +287,7 @@ export default async function AbandonedCartsPage({
         <Stat title="⚠️ Never Attempted (needs investigation)" value={counts.expired || 0} accent="#dc2626" />
       </div>
 
-      <div style={{ marginBottom: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div className="responsive-row" style={{ marginBottom: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
         {Object.keys(STATUS_META).map((kind) => (
           <a
             key={kind}
@@ -334,25 +334,25 @@ export default async function AbandonedCartsPage({
         }}
       >
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
-            <thead style={{ background: "#f9fafb" }}>
-              <tr>
-                <th style={th}>Customer</th>
-                <th style={th}>Cart</th>
-                <th style={th}>Checked out</th>
-                <th style={th}>Status</th>
+          <table role="table" className="mobile-table" style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
+            <thead role="rowgroup" style={{ background: "#f9fafb" }}>
+              <tr role="row">
+                <th role="columnheader" scope="col" style={th}>Customer</th>
+                <th role="columnheader" scope="col" style={th}>Cart</th>
+                <th role="columnheader" scope="col" style={th}>Checked out</th>
+                <th role="columnheader" scope="col" style={th}>Status</th>
               </tr>
             </thead>
 
-            <tbody>
+            <tbody role="rowgroup">
               {filtered.map(({ session, status, linkedOrder }) => {
                 const items = parseCartItems(session.cart_items);
                 const whatsappPhone = normalizePhone(session.phone || "");
                 const hasUnpaidOrder = linkedOrder && linkedOrder.payment_status !== "paid";
 
                 return (
-                  <tr key={session.id}>
-                    <td style={td}>
+                  <tr role="row" key={session.id}>
+                    <td data-label="Customer" role="cell" style={td}>
                       <div style={{ fontWeight: 700 }}>{session.name || "Unknown"}</div>
                       <div style={{ color: "#888", fontSize: 12 }}>{session.phone || "-"}</div>
                       {whatsappPhone && (
@@ -364,7 +364,7 @@ export default async function AbandonedCartsPage({
                         </Link>
                       )}
                     </td>
-                    <td style={td}>
+                    <td data-label="Cart" role="cell" style={td}>
                       {items.length === 0
                         ? "-"
                         : `${cartItemName(items[0]) || "Item"}${
@@ -383,8 +383,8 @@ export default async function AbandonedCartsPage({
                         </div>
                       )}
                     </td>
-                    <td style={td}>{new Date(session.created_at).toLocaleString()}</td>
-                    <td style={td}>
+                    <td data-label="Checked out" role="cell" style={td}>{new Date(session.created_at).toLocaleString()}</td>
+                    <td data-label="Status" role="cell" style={td}>
                       <StatusPill status={status} />
                     </td>
                   </tr>
@@ -392,8 +392,8 @@ export default async function AbandonedCartsPage({
               })}
 
               {filtered.length === 0 && (
-                <tr>
-                  <td style={td} colSpan={4}>
+                <tr role="row">
+                  <td role="cell" style={td} colSpan={4}>
                     No checkout sessions match this filter.
                   </td>
                 </tr>

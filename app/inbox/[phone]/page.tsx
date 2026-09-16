@@ -152,7 +152,7 @@ function renderInboundBody(msg: any) {
     if (!raw.document?.id) return <div>{msg.body}</div>;
 
     return (
-      <a
+      <a className="responsive-row"
         href={`/api/media/${raw.document.id}`}
         download={raw.document?.filename || true}
         style={{
@@ -305,7 +305,7 @@ export default async function ChatPage({
     <main style={{ padding: 24, background: "#fafafa", minHeight: "100vh" }}>
       <Header active="inbox" back={{ href: "/inbox", label: "Inbox" }} />
 
-      <div
+      <div className="responsive-row"
         style={{
           background: "#fff",
           border: "1px solid #e5e7eb",
@@ -319,11 +319,11 @@ export default async function ChatPage({
           gap: 16,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <div className="responsive-row" style={{ display: "flex", alignItems: "center", gap: 14 }}>
           {avatar(customer?.name || phone)}
 
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div className="responsive-row" style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <h1 style={{ margin: 0, fontSize: 20 }}>{customer?.name || "Unknown Customer"}</h1>
               {healthBadge(customer)}
             </div>
@@ -336,7 +336,7 @@ export default async function ChatPage({
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 20, alignItems: "center" }}>
+        <div className="responsive-row" style={{ display: "flex", gap: 20, alignItems: "center" }}>
           {customer && (
             <>
               <div style={{ textAlign: "right" as const }}>
@@ -402,7 +402,7 @@ export default async function ChatPage({
           return (
             <div key={msg.id}>
               {showSeparator && (
-                <div style={{ display: "flex", justifyContent: "center", margin: "16px 0" }}>
+                <div className="responsive-row" style={{ display: "flex", justifyContent: "center", margin: "16px 0" }}>
                   <span
                     style={{
                       background: "#fff",
@@ -426,7 +426,7 @@ export default async function ChatPage({
                   marginBottom: 10,
                 }}
               >
-                <div
+                <div className="chat-bubble"
                   style={{
                     maxWidth: "70%",
                     padding: 12,
@@ -443,7 +443,7 @@ export default async function ChatPage({
                     </div>
                   )}
 
-                  <div
+                  <div className="responsive-row"
                     style={{
                       fontSize: 11,
                       color: "#777",
