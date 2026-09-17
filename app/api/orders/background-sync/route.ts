@@ -5,7 +5,9 @@ import { completeDeliveredCodOrders } from "../../../../lib/codCompletion";
 
 async function runSync(force: boolean) {
   const [delhivery, shiprocket] = await Promise.all([
-    bulkSyncOrdersByOrderNumber({ staleOnly: !force }),
+    process.env.DELHIVERY_API_TOKEN?.trim()
+      ? bulkSyncOrdersByOrderNumber({ staleOnly: !force })
+      : Promise.resolve({ checked: 0, matched: 0, updated: 0, skipped: true, error: undefined }),
     bulkSyncShiprocketStatuses({ staleOnly: !force }),
   ]);
   const cod = await completeDeliveredCodOrders();

@@ -6,6 +6,17 @@ export function pushConfigured() {
   return !!(process.env.WEB_PUSH_PUBLIC_KEY && process.env.WEB_PUSH_PRIVATE_KEY && process.env.WEB_PUSH_SUBJECT);
 }
 
+// Never persist provider response bodies, subscription URLs, or credentials.
+export function pushFailureReason(error: unknown): string {
+  const detail = error as { statusCode?: number; code?: string; message?: string } | null;
+  if (Number.isInteger(detail?.statusCode)) return `Push provider HTTP ${detail!.statusCode}`;
+  if (["ETIMEDOUT", "ESOCKETTIMEDOUT", "ECONNRESET", "ENOTFOUND", "ECONNREFUSED"].includes(detail?.code || "")) {
+    return `Push network error: ${detail!.code}`;
+  }
+  if (/vapid|public.?key|private.?key|subject/i.test(detail?.message || "")) return "Invalid push VAPID configuration";
+  return "Push delivery or receipt storage failed";
+}
+
 export async function dispatchOrderPush() {
   if (!pushConfigured()) throw new Error("Push notifications are not configured");
   const db = supabaseAdmin();
@@ -15,8 +26,10 @@ export async function dispatchOrderPush() {
   if (error) throw error;
   let delivered = 0;
   let retried = 0;
+  const errors = new Set<string>();
   for (const event of events || []) {
     let failed = false;
+    const reasons = new Set<string>();
     try {
       const { data: order, error: orderError } = await db.from("orders")
         .select("id,order_number,payment_status,is_hidden").eq("id", event.order_id).maybeSingle();
@@ -54,20 +67,30 @@ export async function dispatchOrderPush() {
               const status = (error as { statusCode?: number }).statusCode;
               if (status === 404 || status === 410) {
                 const { error: deleteError } = await db.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
-                if (deleteError) failed = true;
-              } else failed = true;
+                if (deleteError) {
+                  failed = true;
+                  reasons.add("Expired subscription cleanup failed");
+                }
+              } else {
+                failed = true;
+                reasons.add(pushFailureReason(error));
+              }
             }
           }));
         }
       }
-    } catch { failed = true; }
+    } catch {
+      failed = true;
+      reasons.add("Order or subscription database lookup failed");
+    }
+    for (const reason of reasons) errors.add(reason);
     const { error: finishError } = await db.from("order_push_events").update({
       status: failed ? (event.attempts >= 8 ? "failed" : "pending") : "sent",
       available_at: new Date(Date.now() + Math.min(3600, 30 * 2 ** event.attempts) * 1000).toISOString(),
-      last_error: failed ? "One or more push deliveries failed" : null,
+      last_error: failed ? [...reasons].join("; ") : null,
     }).eq("id", event.id).eq("attempts", event.attempts);
     if (finishError) throw finishError;
     if (failed) retried++;
   }
-  return { processed: (events || []).length, delivered, retried };
+  return { processed: (events || []).length, delivered, retried, errors: [...errors] };
 }

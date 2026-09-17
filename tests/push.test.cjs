@@ -152,3 +152,13 @@ test('logout clears authentication even if removing device alerts fails', async 
   assert.equal(result.url.searchParams.get('alerts'), 'still-enabled');
   assert(cookies.some(([name, value, options]) => name === 'session' && value === '' && options.maxAge === 0));
 });
+
+test('push diagnostics identify failures without leaking provider bodies or credentials', () => {
+  const { pushFailureReason } = load('lib/push.ts', {
+    './supabaseAdmin': {}, './pushValidation': {},
+  });
+  assert.equal(pushFailureReason({ statusCode: 403, body: 'private provider data', message: 'secret endpoint' }), 'Push provider HTTP 403');
+  assert.equal(pushFailureReason({ code: 'ETIMEDOUT' }), 'Push network error: ETIMEDOUT');
+  assert.equal(pushFailureReason(new Error('VAPID publicKey contains secret-value')), 'Invalid push VAPID configuration');
+  assert.equal(pushFailureReason(new Error('https://private-endpoint.example/token')), 'Push delivery or receipt storage failed');
+});

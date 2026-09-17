@@ -22,6 +22,6 @@ jobs:
           APP_BASE_URL: ${{ secrets.APP_BASE_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          curl --silent --show-error --fail --max-time 65 \
+          curl --silent --show-error --fail-with-body --max-time 65 \
             "${APP_BASE_URL%/}/api/push/dispatch" \
             -H "Authorization: Bearer ${CRON_SECRET}"

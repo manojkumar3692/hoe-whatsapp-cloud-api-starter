@@ -31,7 +31,10 @@ export default function CourierRefresh({ className }: { className?: string }) {
       const checked = (result.delhivery?.checked || 0) + (result.shiprocket?.checked || 0);
       const updated = (result.delhivery?.updated || 0) + (result.shiprocket?.updated || 0) + (result.cod?.completed || 0);
       setState("success");
-      setMessage(checked ? `Updated ${updated} of ${checked} checked` : "Tracking is up to date");
+      const unavailable = result.delhivery?.skipped && result.shiprocket?.skipped;
+      setMessage(unavailable
+        ? "Live tracking unavailable — showing saved statuses"
+        : checked ? `Updated ${updated} of ${checked} checked` : "No tracking updates found");
       router.refresh();
     } catch (error: any) {
       setState("error");

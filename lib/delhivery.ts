@@ -197,10 +197,20 @@ export function deriveDelhiveryShipmentStatus(shipment: DelhiveryShipment): {
     });
   }
 
+  // Display the courier's current report even when it has no equivalent
+  // fulfilment status (for example, "Not Picked"). Historical scans are
+  // only evidence for advancing fulfilment, not a replacement display label.
+  const currentLabel = headline?.Status || headline?.Instructions || "";
+  const displayStatus = (candidate: { label: string; mapped: string | null; location: string }) => ({
+    rawStatus: currentLabel || candidate.label,
+    mappedStatus: candidate.mapped,
+    location: currentLabel ? headline?.StatusLocation || "" : candidate.location,
+  });
+
   const terminal = candidates
     .filter((c) => c.mapped === "returned" || c.mapped === "cancelled")
     .sort((a, b) => b.time.localeCompare(a.time))[0];
-  if (terminal) return { rawStatus: terminal.label, mappedStatus: terminal.mapped, location: terminal.location };
+  if (terminal) return displayStatus(terminal);
 
   const rank: Record<string, number> = {
     pending: 0, confirmed: 1, packed: 2, shipped: 3, out_for_delivery: 4, delivered: 5,
@@ -209,7 +219,7 @@ export function deriveDelhiveryShipmentStatus(shipment: DelhiveryShipment): {
     .filter((c) => c.mapped && rank[c.mapped] !== undefined)
     .sort((a, b) => (rank[b.mapped!] - rank[a.mapped!]) || b.time.localeCompare(a.time))[0];
 
-  if (best) return { rawStatus: best.label, mappedStatus: best.mapped, location: best.location };
+  if (best) return displayStatus(best);
   return {
     rawStatus: headline?.Status || headline?.Instructions || "",
     mappedStatus: null,
