@@ -161,3 +161,49 @@ test('purchase endpoint verifies attachment bytes, keeps files private, and clea
   assert.equal((await route.POST(request('%PDF-1.7\nsample'))).status,409);
   assert.equal(removed.length,1); assert.equal(removed[0],uploaded[1].path);
 });
+
+test('billing probe reads funding activity without guessing units or exposing payment details', async () => {
+  const env = { META_AD_ACCOUNT_ID: 'act_627309202982496', META_ADS_ACCESS_TOKEN: 'test-private-token', META_ADS_API_VERSION: 'v23.0' };
+  const calls = [];
+  const events = [
+    { event_time: '2026-08-19T12:00:00+0530', event_type: 'funding_event_successful', extra_data: JSON.stringify({ amount: '40', currency: 'INR', transaction_id: 'abc', card_number: 'secret-card' }) },
+    { event_time: '2026-08-20T12:00:00+0530', event_type: 'ad_account_billing_charge', extra_data: 'not-json' },
+    { event_time: '2026-08-20T12:00:00+0530', event_type: 'update_campaign_name', extra_data: {} },
+  ];
+  const billing = load('lib/metaBilling.ts', { './metaAds': {
+    metaPeriod: () => ({ since: '2026-08-01', until: '2026-08-31' }),
+    graphPages: async (path, params, token) => {
+      calls.push({ path, params, token });
+      return path.endsWith('/activities') ? events : [{ id: 'act_627309202982496', currency: 'INR', timezone_name: 'Asia/Kolkata' }];
+    },
+  } }, { process: { env } });
+  const result = await billing.checkMetaBilling('2026-08');
+  assert.equal(result.events.length, 2);
+  assert.equal(result.events[1].details.amount, '40');
+  assert.equal(result.events[1].details.transaction_id, 'abc');
+  assert.equal(JSON.stringify(result).includes('secret-card'), false);
+  assert.equal(JSON.stringify(result).includes('test-private-token'), false);
+  assert.equal(calls[1].params.since, String(Date.parse('2026-08-01T00:00:00+05:30') / 1000));
+  assert.equal(calls[1].params.until, String(Date.parse('2026-09-01T00:00:00+05:30') / 1000));
+  events.length = 0;
+  assert.match((await billing.checkMetaBilling('2026-08')).message, /does not establish/);
+  events.push({ event_type: 'funding_event_successful', event_time: '2026-07-31T12:00:00Z' });
+  await assert.rejects(() => billing.checkMetaBilling('2026-08'), /outside/);
+  delete env.META_ADS_ACCESS_TOKEN;
+  await assert.rejects(() => billing.checkMetaBilling('2026-08'), /Set META_ADS_ACCESS_TOKEN/);
+});
+
+test('billing route enforces access checks and hides unexpected upstream errors', async () => {
+  let deny = true, invoked = false;
+  const route = load('app/api/accounts/meta/billing-check/route.ts', {
+    'next/server': { NextResponse: { json: (body, opts) => ({ body, ...opts }) } },
+    '../../../../../lib/financeRequest': { financeAccess: async (req, write) => { assert.equal(write, true); return deny ? { status: 401 } : null; } },
+    '../../../../../lib/metaBilling': { checkMetaBilling: async () => { invoked = true; throw new Error('network secret-private-token'); } },
+  });
+  assert.equal((await route.POST({ json: async () => ({ month: '2026-08' }) })).status, 401);
+  assert.equal(invoked, false);
+  deny = false;
+  const response = await route.POST({ json: async () => ({ month: '2026-08' }) });
+  assert.equal(response.body.error, 'Billing API check failed. Retry later.');
+  assert.equal(response.headers['Cache-Control'], 'no-store');
+});

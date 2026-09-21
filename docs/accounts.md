@@ -56,3 +56,23 @@ API errors preserve the last successful report. Reports replace one complete mon
 For hourly refresh, configure repository secrets `APP_BASE_URL` and `CRON_SECRET` and set repository variable `META_SPEND_SYNC_ENABLED=true`. The provided GitHub Actions workflow then calls the authenticated GET `/api/accounts/meta/sync` for current and previous month, refreshing delayed attribution. Keep the flag unset until migration and credentials are ready. Manual POST sync uses dashboard session authentication and same-origin checks.
 
 API reference: [Meta campaign insights](https://www.postman.com/meta/facebook-marketing-api/request/zo3xvu7/get-campaign-insights-l3), [Meta SDK insights fields](https://github.com/facebook/facebook-python-business-sdk/blob/main/facebook_business/adobjects/adsinsights.py).
+
+### Billing API availability check
+
+The Meta advertising page includes **Check billing API**, independent of migration 013.
+It calls the authenticated, same-origin `POST /api/accounts/meta/billing-check`
+for the selected month using the server's dedicated Meta Ads credentials. It reads
+account metadata and paginated `/activities` in India time, then displays funding
+and billing events. No database records or financial totals are changed.
+
+Activity `extra_data` has no verified payment schema for this account. Only scalar
+amount/currency/transaction/reference/payment ID fields are shown, with units
+explicitly unverified. Empty results do not mean zero top-ups. This check does not
+claim support for invoice downloads or prepaid balance. Reconcile returned events
+against actual Payment activity before implementing a transaction ledger.
+
+Local setup: put `META_ADS_ACCESS_TOKEN` in `.env.local` (never in chat or a public
+NEXT_PUBLIC variable), set `META_AD_ACCOUNT_ID`, and restart Next.js. Use a Meta
+Marketing API developer app and a token authorized to read the ad account; a
+WhatsApp token is not automatically authorized. The account ID alone cannot query
+billing. Production credentials must be configured separately on the server.
