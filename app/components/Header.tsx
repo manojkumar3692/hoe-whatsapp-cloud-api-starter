@@ -7,6 +7,7 @@ import PushNotifications from "./PushNotifications";
 export const NAV_ITEMS = [
   { key: "home", label: "Home", href: "/" },
   { key: "orders", label: "Orders", href: "/orders" },
+  { key: "accounts", label: "Accounts", href: "/accounts" },
   { key: "inventory", label: "Inventory", href: "/inventory" },
   { key: "customers", label: "Customers", href: "/customers" },
   { key: "follow-ups", label: "Follow-ups", href: "/follow-ups" },

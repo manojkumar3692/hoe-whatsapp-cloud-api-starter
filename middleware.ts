@@ -14,7 +14,7 @@ export async function middleware(req: NextRequest) {
   // Permit only an authenticated scheduled GET; browser POSTs continue to
   // require the normal dashboard session below.
   if (
-    req.nextUrl.pathname === "/api/orders/background-sync" &&
+    ["/api/orders/background-sync", "/api/accounts/meta/sync"].includes(req.nextUrl.pathname) &&
     req.method === "GET" &&
     !!process.env.CRON_SECRET &&
     req.headers.get("authorization") === `Bearer ${process.env.CRON_SECRET}`
