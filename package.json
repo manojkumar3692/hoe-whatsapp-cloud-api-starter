@@ -6,6 +6,7 @@
     "lint": "next lint",
     "test:push": "node --test tests/push.test.cjs",
     "test:accounts": "node --test tests/accounts.test.cjs tests/finance.test.cjs",
+    "test:genie": "node --test tests/genie.test.cjs",
     "test:products": "node --test tests/products.test.cjs",
     "test:campaigns": "node --test tests/campaigns.test.cjs"
   },

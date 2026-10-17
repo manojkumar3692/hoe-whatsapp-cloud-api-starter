@@ -1,0 +1,53 @@
+.page { max-width: 1380px; margin: auto; padding-bottom: 48px; color: #263d39; }
+.hero { display:flex; align-items:center; justify-content:space-between; gap:28px; padding:38px 30px; margin:24px 0; background:#173e37; color:#f7f4e9; border-radius:24px; }
+.eyebrow { display:block; text-transform:uppercase; letter-spacing:.14em; font-size:11px; font-weight:800; color:#608177; }
+.hero .eyebrow { color:#b6cdbb; }
+.hero h1 { font-size:clamp(30px,4vw,48px); letter-spacing:-.045em; line-height:1.1; margin:14px 0; }
+.hero p { color:#d3ded4; max-width:580px; line-height:1.6; margin-bottom:0; }
+.stamp { display:grid; gap:10px; font-size:12px; flex-shrink:0; }
+.stamp a { color:#e3cb95; }
+.tabs { display:flex; gap:8px; }
+.tabs a { padding:10px 18px; border-radius:30px; background:#ecefe9; color:#24483e; text-decoration:none; font-weight:700; }
+.tabs a[aria-current="page"] { background:#284c41; color:#fff; }
+.period { font-size:12px; color:#66736c; line-height:1.7; }
+.metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; margin:20px 0 12px; }
+.metric { display:grid; gap:10px; border:1px solid #dde4dc; border-radius:18px; padding:22px; background:#fff; }
+.metric > span { font-size:12px; font-weight:700; }
+.metric > strong { font-size:clamp(24px,3vw,34px); letter-spacing:-.03em; }
+.metric small { color:#617269; line-height:1.6; }
+.grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+.panel { border:1px solid #dce4db; border-radius:20px; padding:26px; background:#fff; margin:20px 0 0; min-width:0; }
+.panel h2 { font-size:24px; letter-spacing:-.03em; margin:10px 0 16px; }
+.panel h3 { font-size:16px; margin:0; }
+.panel p { color:#62746b; font-size:14px; line-height:1.65; }
+.sectionHead { display:flex; justify-content:space-between; align-items:center; gap:16px; }
+.sectionHead small { color:#62746b; line-height:1.5; max-width:650px; }
+.badge { border-radius:20px; padding:7px 12px; background:#edf3e9; font-size:12px; white-space:nowrap; }
+.actions { display:grid; gap:22px; }
+.actions article { display:flex; gap:14px; padding-top:18px; border-top:1px solid #e6eae2; }
+.actions a,.panel a { color:#386956; font-size:13px; font-weight:700; }
+.number { flex-shrink:0; min-width:20px; white-space:nowrap; color:#9f8252; font-size:13px; padding-top:2px; }
+.chart { display:flex; height:190px; gap:4px; align-items:flex-end; margin:28px 0 12px; }
+.barSlot { display:flex; flex:1; height:100%; align-items:flex-end; min-width:0; }
+.bar { width:100%; background:#6a9880; border-radius:4px 4px 0 0; min-height:3px; }
+.bar:hover,.bar:focus { background:#b89154; outline:2px solid #173e37; }
+.notice { background:#f6f4e9; border-radius:12px; padding:14px; }
+.prompts { display:flex; flex-wrap:wrap; gap:8px; margin:20px 0; }
+.prompts button { background:#eff3ed; border:1px solid #dce5d8; color:#345d4f; padding:10px 14px; font-size:12px; border-radius:24px; }
+.chatForm { display:grid; gap:10px; }
+.chatForm label { font-size:13px; font-weight:700; }
+.chatForm textarea { resize:vertical; background:#fafbf8; width:100%; border:1px solid #d6dfd2; border-radius:12px; padding:14px; font:inherit; }
+.chatForm button { background:#234f40; color:#fff; white-space:nowrap; border-radius:12px; padding:13px 22px; }
+.page button:disabled { opacity:.5; cursor:not-allowed; }
+.conversation { display:grid; gap:12px; max-height:580px; overflow:auto; margin:15px 0; }
+.conversation p { white-space:pre-wrap; margin-bottom:0; }
+.user,.answer { padding:18px; border-radius:14px; }
+.user { background:#f4f3ed; margin-left:10%; }
+.answer { background:#edf4ed; margin-right:5%; }
+.tableWrap { overflow-x:auto; }
+.tableWrap table { width:100%; border-collapse:collapse; min-width:620px; }
+.tableWrap th,.tableWrap td { text-align:left; padding:14px 10px; border-bottom:1px solid #e7ece5; font-size:13px; }
+.tableWrap th { color:#738177; font-size:11px; text-transform:uppercase; }
+.panel summary { cursor:pointer; font-weight:700; }
+@media(max-width:900px) { .hero { align-items:flex-start; flex-direction:column; } .metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } .grid { grid-template-columns:1fr; gap:0; } }
+@media(max-width:540px) { .hero { padding:26px 20px; } .panel { padding:20px 16px; } .metric { padding:16px; } .sectionHead { flex-wrap:wrap; } .chatForm button { width:100%; } .chart { gap:3px; } }

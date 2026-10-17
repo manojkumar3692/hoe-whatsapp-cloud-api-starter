@@ -97,6 +97,8 @@ export default async function Home() {
         <Link className={styles.primaryButton} href="/orders?view=operations">Open paid order queue →</Link>
       </section>
 
+      <section className={styles.panel} style={{ marginBottom: 20 }}><div className={styles.panelHeader}><div><p className={styles.sectionLabel}>Your business, explained</p><h2>Eon Genie</h2><p>See what’s selling, compare growth, and find your next sales opportunity.</p></div><Link href="/genie" className={styles.primaryButton}>Explore insights →</Link></div></section>
+
       <section className={styles.kpis} aria-label="Today’s sales summary">
         <Kpi label="Paid orders today" value={String(paidToday.length)} note="Confirmed sales only" tone="green" href="/orders?view=all&payment=paid&date=today" />
         <Kpi label="Revenue today" value={formatINR(todayRevenue)} note="From paid orders" tone="blue" href="/orders?view=all&payment=paid&date=today" />
