@@ -10,6 +10,7 @@ function statusBadge(status: string) {
     warning: ["#fef3c7", "#92400e", "🟡 Warning"],
     cooldown: ["#fee2e2", "#991b1b", "🔴 Cooldown"],
     already_sent: ["#e5e7eb", "#374151", "⚪ Already Sent"],
+    excluded: ["#f3f4f6", "#6b7280", "⛔ Excluded"],
     sent: ["#dbeafe", "#1d4ed8", "✅ Sent"],
     failed: ["#fee2e2", "#991b1b", "❌ Failed"],
   };
@@ -127,6 +128,7 @@ export default async function CampaignPreviewPage({
   const alreadySent = rows.filter(
     (r: any) => r.status === "already_sent"
   ).length;
+  const excluded = rows.filter((r: any) => r.status === "excluded").length;
 
   return (
     <main style={{ padding: 24, background: "#fafafa", minHeight: "100vh" }}>
@@ -161,6 +163,9 @@ export default async function CampaignPreviewPage({
         </p>
         <p>
           <b>Already Sent Before:</b> {alreadySent}
+        </p>
+        <p>
+          <b>Excluded (opt-out / blocked / no consent):</b> {excluded}
         </p>
       </div>
 
@@ -200,8 +205,8 @@ export default async function CampaignPreviewPage({
           campaignId={id}
           title="Resend to Full List"
           mode="everyone_including_already_sent"
-          count={rows.length}
-          note="Includes everyone above, PLUS people who already received this template — use for a deliberate repeat send."
+          count={rows.length - excluded}
+          note="Includes everyone above, PLUS people who already received this template. Opted-out, blocked and non-consenting customers stay excluded."
         />
       </div>
 

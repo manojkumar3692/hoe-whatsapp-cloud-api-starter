@@ -192,3 +192,21 @@ npm run dev
 The dashboard supports phone and tablet layouts. See
 [mobile and push setup](docs/mobile-and-push.md) for enabling paid-order push
 notifications, Home Screen installation on iPhone, and delivery verification.
+
+### RIVA product rollout
+
+Apply `supabase/migrations/014_riva_inventory.sql` after migration 010. It adds
+`RIVA-8ML` (opening stock 10) and `RIVA-50ML` (opening stock 5), preserving any
+existing SKU counts. Existing paid RIVA orders, including Trial Packs, are
+reconciled once through the allocation ledger; their sales reduce the opening
+balances. The migration also supports JSON-string items in stock allocation
+and checkout reservations, matching the storefront's persisted order format.
+
+Inventory, storefront availability, orders, invoices, CRM sync and the Accounts
+costing selector use database/order data and pick up RIVA automatically. Enter
+RIVA's dated unit costs in Accounts before relying on profit estimates. Follow-up
+fragrance labels and abandoned-cart product links/images include RIVA explicitly.
+The verified product page is https://www.houseofeon.in/products/riva-women-perfume.
+
+Run `npm run test:products` to check RIVA mapping, historical sales, migration
+reruns, stock reservations, paid-order deductions and stock restoration.

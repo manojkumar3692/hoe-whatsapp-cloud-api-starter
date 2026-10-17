@@ -1,0 +1,34 @@
+import Link from "next/link";
+import Header from "../components/Header";
+import { loadGenie } from "../../lib/genieData";
+import { genieActions } from "../../lib/genie";
+import GenieChat from "./GenieChat";
+import styles from "./genie.module.css";
+export const dynamic = "force-dynamic";
+const money = (n: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n / 100);
+const date = (n: number) => new Date(n).toLocaleDateString("en-GB", { timeZone: "Asia/Dubai", day: "numeric", month: "short", year: "numeric" });
+const change = (n: number | null) => n === null ? "No previous baseline" : `${n > 0 ? "+" : ""}${n}%`;
+export default async function GeniePage({ searchParams }: { searchParams: Promise<{ period?: string }> }) {
+  const period = (await searchParams).period === "week" ? "week" : "month";
+  let data;
+  try { data = await loadGenie(); } catch { return <main className={styles.page}><Header active="genie" /><h1>Eon Genie</h1><p role="alert">Business data could not be loaded. No totals are shown because the snapshot is incomplete.</p><Link href="/genie">Try again →</Link></main>; }
+  const p = data[period], actions = genieActions(data, period);
+  const maxSales = Math.max(1, ...data.daily.map(d => d.sales));
+  return <main className={styles.page}>
+    <Header active="genie" />
+    <section className={styles.hero}><div><span className={styles.eyebrow}>House of Eon · Business insights</span><h1>Meet your business genie.</h1><p>A clearer view of what’s selling, what’s changing, and where to focus next.</p></div><div className={styles.stamp}><strong>Live business snapshot</strong><span>{new Date(data.generatedAt).toLocaleString("en-GB", { timeZone: "Asia/Dubai" })} · Dubai</span><a href={`/genie?period=${period}`}>Refresh insights ↗</a></div></section>
+    <nav className={styles.tabs} aria-label="Comparison period"><Link href="/genie?period=month" aria-current={period === "month" ? "page" : undefined}>This month</Link><Link href="/genie?period=week" aria-current={period === "week" ? "page" : undefined}>This week</Link></nav>
+    <p className={styles.period}>{p.days ? `${date(p.from)} – ${date(p.to - 1)} compared with ${date(p.previousFrom)} – ${date(p.previousTo - 1)} · ${p.days} complete days each` : "No complete days in this period yet. Check back tomorrow or choose another period."}</p>
+    <div className={styles.metrics}>
+      {[{ label: "Paid order value", value: money(p.current.sales), detail: `${change(p.salesGrowth)} · previous ${money(p.previous.sales)}` }, { label: "Paid orders", value: p.current.orders, detail: `${change(p.orderGrowth)} · previous ${p.previous.orders}` }, { label: "Average order value", value: money(p.current.aov), detail: `Previous ${money(p.previous.aov)}` }, { label: "Trial Packs", value: p.trialPacks, detail: `Previous ${p.previousTrialPacks} · sets, not individual vials` }].map(m => <section className={styles.metric} key={m.label}><span>{m.label}</span><strong>{m.value}</strong><small>{m.detail}</small></section>)}
+    </div>
+    <p className={styles.period}>Today is excluded. Month comparisons use the same number of days, capped by the shorter month. Paid order value includes tax and outstanding COD; it is not collected cash or profit.</p>
+    <div className={styles.grid}>
+      <section className={styles.panel}><span className={styles.eyebrow}>Evidence → next step</span><h2>Where to focus</h2><div className={styles.actions}>{actions.map((a,i) => <article key={a.title}><span className={styles.number}>{String(i + 1).padStart(2,"0")}</span><div><h3>{a.title}</h3><p>{a.evidence}</p><p>{a.action}</p><Link href={a.href}>Investigate →</Link></div></article>)}</div></section>
+      <section className={styles.panel}><span className={styles.eyebrow}>28 complete days</span><h2>The sales pulse</h2><p>Daily paid order value. Hover or focus a bar for its figures.</p><div className={styles.chart}>{data.daily.map(d => <div key={d.date} className={styles.barSlot}><div tabIndex={0} role="img" aria-label={`${d.date}: ${money(d.sales)}, ${d.orders} orders`} title={`${d.date}: ${money(d.sales)} · ${d.orders} orders`} className={styles.bar} style={{ height: `${Math.max(2, d.sales / maxSales * 100)}%` }} /></div>)}</div><div className={styles.sectionHead}><small>{data.daily[0].date}</small><small>{data.daily[27].date}</small></div><p className={styles.notice}>{data.allTime.orders} qualifying orders · {money(data.allTime.sales)} across available history{data.firstOrderAt ? ` since ${date(Date.parse(data.firstOrderAt))}` : ""}.</p></section>
+    </div>
+    <GenieChat enabled={!!process.env.OPENAI_API_KEY && !!process.env.OPENAI_GENIE_MODEL} />
+    <section className={styles.panel}><div className={styles.sectionHead}><div><span className={styles.eyebrow}>Product demand</span><h2>What’s moving?</h2></div><Link href="/inventory">Open inventory →</Link></div><p>Sorted by physical units. Compare within the same size: 8ml includes Trial Pack selections; 50ml tracks bottles. New products have shorter selling histories.</p><div className={styles.tableWrap}><table><thead><tr><th>Product</th><th>Size</th><th>This period</th><th>Previous</th><th>Unit change</th><th>On hand now</th></tr></thead><tbody>{p.products.map(s => <tr key={`${s.key}-${s.size}`}><td><strong>{s.name}</strong>{!s.active && " (inactive)"}</td><td>{s.size}</td><td>{s.current}</td><td>{s.previous}</td><td>{s.current - s.previous > 0 ? "+" : ""}{s.current - s.previous}</td><td>{s.stock}</td></tr>)}</tbody></table></div>{!p.products.length && <p>No inventory products found.</p>}</section>
+    <details className={styles.panel}><summary>How Genie reads your business</summary><p>All available non-hidden orders are paginated, rather than using the order screen’s display limit. Rankings use paid orders, excluding cancelled, refunded, returned, rejected and disputed shipments. This is a sales-momentum view, so it can differ from Accounts’ gross registers.</p><p>{data.excludedOrders} paid orders excluded by shipment status across history. {data.invalidAmounts} orders excluded for invalid amounts. Product mapping omitted {p.unmappedOrders} current and {p.previousUnmappedOrders} previous-period orders; their valid order values remain in totals.</p><p>Stock cover is a rough estimate based on 28 complete days and current on-hand stock. It does not account for reservations, future demand or supplier lead time. No margins, ad attribution, repeat-customer rates or conversion rates are inferred. Suggestions are experiments, not promises.</p><p>AI chat sends these aggregate figures and your conversation to OpenAI. Customer names, phone numbers, addresses and individual orders are not sent. Chat history lasts only while this page stays open.</p></details>
+  </main>;
+}
