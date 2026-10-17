@@ -6,6 +6,7 @@ const FRAGRANCES = [
   ["zyrox", "Zyrox"],
   ["rank", "RANK"],
   ["syra", "Syra"],
+  ["riva", "RIVA"],
   ["silent-gold", "Silent Gold"],
 ] as const;
 

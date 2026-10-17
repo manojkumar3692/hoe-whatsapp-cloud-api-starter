@@ -10,6 +10,7 @@ export const PRODUCT_URL_SLUGS: Record<string, string> = {
   zyrox: "zyrox-perfume",
   rank: "rank-perfume",
   syra: "syra-women-perfume",
+  riva: "riva-women-perfume",
   "silent-gold": "silent-gold-unisex-perfume",
 };
 
@@ -25,6 +26,7 @@ export function resolveProductSlug(productId: string | null | undefined): string
 // if set, otherwise no image header is sent at all (plain — no generic
 // banner substitute, by design).
 export const PRODUCT_IMAGE_URLS: Record<string, string> = {
+  riva: "https://www.houseofeon.in/products/riva.png",
   zyrox: "https://fvctxehmnzprbqhrxukc.supabase.co/storage/v1/object/public/campaign-image/zyrox-lifestyle-1.png",
   "silent-gold": "https://fvctxehmnzprbqhrxukc.supabase.co/storage/v1/object/public/campaign-image/sgold-lifestyle-3.png",
   "arctic-wave": "https://fvctxehmnzprbqhrxukc.supabase.co/storage/v1/object/public/campaign-image/ARCTIC_WAVES_PROM_2.png",

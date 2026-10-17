@@ -2,15 +2,35 @@ import { NextRequest, NextResponse } from "next/server";
 import { parse } from "csv-parse/sync";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 import { normalizePhone } from "../../../../lib/phone";
+import {
+  CampaignAudienceCustomer,
+  trialPackAudienceFromOrders,
+} from "../../../../lib/campaignAudience";
 
-type AudienceCustomer = {
-  name: string;
-  phone: string;
-  product: string;
-  city: string;
-};
+type AudienceCustomer = CampaignAudienceCustomer;
 
 function getHealth(customer: any) {
+  if (customer?.opt_out) {
+    return {
+      status: "excluded",
+      reason: "Customer opted out of marketing",
+    };
+  }
+
+  if (customer?.blocked) {
+    return {
+      status: "excluded",
+      reason: "Customer is blocked",
+    };
+  }
+
+  if (customer && customer.consent === false) {
+    return {
+      status: "excluded",
+      reason: "Customer does not have marketing consent",
+    };
+  }
+
   const failCount = customer?.marketing_fail_count || 0;
   const cooldownUntil = customer?.marketing_cooldown_until;
 
@@ -55,6 +75,7 @@ export async function POST(req: NextRequest) {
     const couponCode = String(form.get("coupon_code") || "").trim();
     const headerImageUrl = String(form.get("header_image_url") || "").trim();
     const product = String(form.get("product") || "").trim();
+    const audienceSource = String(form.get("audience_source") || "crm");
 
     const requestedLimit = Number(form.get("limit") || 500);
     const limit = Math.min(
@@ -107,6 +128,34 @@ export async function POST(req: NextRequest) {
           ])
         ).values()
       ).slice(0, limit);
+    } else if (audienceSource === "trial_pack_buyers") {
+      // Order-history audience mode. Order rows are loaded newest-first so a
+      // repeated buyer contributes their most recent name/city only once.
+      // Fetch in pages because Supabase projects commonly cap one response at
+      // 1,000 rows; stop as soon as enough unique Trial Pack buyers are found.
+      const pageSize = 1000;
+      const maxPages = 20;
+      const orderRows: any[] = [];
+
+      for (let page = 0; page < maxPages; page += 1) {
+        const from = page * pageSize;
+        const { data: orders, error: ordersError } = await supabase
+          .from("orders")
+          .select(
+            "customer_name, customer_phone, customer_city, items, payment_status, is_hidden, created_at"
+          )
+          .eq("payment_status", "paid")
+          .eq("is_hidden", false)
+          .order("created_at", { ascending: false })
+          .range(from, from + pageSize - 1);
+
+        if (ordersError) throw ordersError;
+
+        orderRows.push(...(orders || []));
+        unique = trialPackAudienceFromOrders(orderRows, limit);
+
+        if (unique.length >= limit || (orders || []).length < pageSize) break;
+      }
     } else {
       // CRM customer database mode
       let customerQuery = supabase
@@ -141,7 +190,9 @@ export async function POST(req: NextRequest) {
         {
           error: file?.size
             ? "No valid phone numbers found in CSV"
-            : "No eligible customers found in CRM for the selected filter",
+            : audienceSource === "trial_pack_buyers"
+              ? "No paid Trial Pack buyers found in order history"
+              : "No eligible customers found in CRM for the selected filter",
         },
         { status: 400 }
       );
@@ -152,7 +203,10 @@ export async function POST(req: NextRequest) {
       .insert({
         name: campaignName,
         template_name: templateName,
-        product: product || null,
+        product:
+          audienceSource === "trial_pack_buyers"
+            ? "Trial Pack buyers"
+            : product || null,
         coupon_code: couponCode || null,
         header_image_url: headerImageUrl || null,
         total_recipients: unique.length,
@@ -203,7 +257,9 @@ export async function POST(req: NextRequest) {
       let status = health.status;
       let reason = health.reason;
 
-      if (alreadySent) {
+      // An opt-out/block/no-consent decision always wins. A previous send must
+      // never turn an excluded customer into a resendable recipient.
+      if (alreadySent && status !== "excluded") {
         status = "already_sent";
         reason = "Already received this template before";
       }
@@ -211,10 +267,10 @@ export async function POST(req: NextRequest) {
       return {
         campaign_id: campaign.id,
         customer_id: existing?.id || null,
-        name: customer.name,
+        name: existing?.name || customer.name,
         phone: customer.phone,
         product: customer.product,
-        city: customer.city,
+        city: existing?.city || customer.city,
         status,
         reason,
       };
